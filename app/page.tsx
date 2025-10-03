@@ -1,103 +1,422 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { Search, Calendar, Users, Star, Wifi, Car, Coffee, Waves, MapPin, Phone, Mail, Shield, Clock, Award } from 'lucide-react'
+import Link from 'next/link'
+
+export default function HomePage() {
+  const [checkIn, setCheckIn] = useState('')
+  const [checkOut, setCheckOut] = useState('')
+  const [guests, setGuests] = useState(1)
+  const [branch, setBranch] = useState('')
+
+  const branches = [
+    { id: 'colombo', name: 'Colombo', location: 'Colombo City Center' },
+    { id: 'kandy', name: 'Kandy', location: 'Kandy Hills' },
+    { id: 'galle', name: 'Galle', location: 'Galle Fort' }
+  ]
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-white">
+      {/* Navigation */}
+      <nav className="flex items-center justify-between px-6 py-4 border-b shadow-sm">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-xl">SN</span>
+          </div>
+          <div>
+            <span className="text-2xl font-bold text-gray-800">Sky Nest</span>
+            <p className="text-xs text-gray-500 -mt-1">Hotel & Resort</p>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        
+        <div className="hidden md:flex items-center space-x-8">
+          <a href="#rooms" className="text-gray-700 hover:text-blue-600 font-medium transition">Rooms</a>
+          <a href="#services" className="text-gray-700 hover:text-blue-600 font-medium transition">Services</a>
+          <a href="#branches" className="text-gray-700 hover:text-blue-600 font-medium transition">Branches</a>
+          <a href="#about" className="text-gray-700 hover:text-blue-600 font-medium transition">About</a>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <Link 
+            href="/auth/staff-login" 
+            className="text-gray-700 hover:text-gray-900 font-medium hidden md:block"
+          >
+            Staff Portal
+          </Link>
+          <div className="flex items-center space-x-2">
+            <Link 
+              href="/auth/login"
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
+            >
+              Sign In
+            </Link>
+            <Link 
+              href="/auth/register"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              Sign Up
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <div className="relative h-[650px] flex items-center justify-center">
+        <div 
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage: "url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')"
+          }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-black/30"></div>
+        </div>
+        
+        <div className="relative z-10 text-center text-white max-w-5xl px-6">
+          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+            Discover Paradise in
+            <span className="block text-blue-400">Sri Lanka</span>
+          </h1>
+          <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto">
+            Experience luxury and comfort at Sky Nest Hotels across Colombo, Kandy, and Galle. 
+            Your perfect getaway awaits.
+          </p>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative -mt-20 z-20 max-w-6xl mx-auto px-6">
+        <div className="bg-white rounded-2xl shadow-2xl border p-4">
+          <div className="flex flex-col lg:flex-row items-center gap-4">
+            <div className="flex-1 px-4 py-3">
+              <label className="block text-xs font-bold text-gray-800 mb-2 uppercase tracking-wide">Branch</label>
+              <select 
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
+              >
+                <option value="">Select a branch</option>
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name} - {branch.location}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="hidden lg:block w-px h-12 bg-gray-200"></div>
+            
+            <div className="flex-1 px-4 py-3">
+              <label className="block text-xs font-bold text-gray-800 mb-2 uppercase tracking-wide">Check-in</label>
+              <input 
+                type="date"
+                value={checkIn}
+                onChange={(e) => setCheckIn(e.target.value)}
+                min="2025-10-01"
+                className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
+              />
+            </div>
+            
+            <div className="hidden lg:block w-px h-12 bg-gray-200"></div>
+            
+            <div className="flex-1 px-4 py-3">
+              <label className="block text-xs font-bold text-gray-800 mb-2 uppercase tracking-wide">Check-out</label>
+              <input 
+                type="date"
+                value={checkOut}
+                onChange={(e) => setCheckOut(e.target.value)}
+                min={checkIn || "2025-10-01"}
+                className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
+              />
+            </div>
+            
+            <div className="hidden lg:block w-px h-12 bg-gray-200"></div>
+            
+            <div className="flex-1 px-4 py-3">
+              <label className="block text-xs font-bold text-gray-800 mb-2 uppercase tracking-wide">Guests</label>
+              <select 
+                value={guests}
+                onChange={(e) => setGuests(Number(e.target.value))}
+                className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
+              >
+                {[1,2,3,4,5,6,7,8].map(num => (
+                  <option key={num} value={num}>{num} guest{num > 1 ? 's' : ''}</option>
+                ))}
+              </select>
+            </div>
+            
+            <Link 
+              href="/guest/search-rooms"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl flex items-center space-x-2 transition font-medium"
+            >
+              <Search className="w-5 h-5" />
+              <span>Search</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Why Choose Sky Nest */}
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Why choose Sky Nest?</h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Experience world-class hospitality with modern amenities and personalized service
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-4 gap-8">
+            <div className="text-center group">
+              <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-600 transition duration-300">
+                <Shield className="w-10 h-10 text-blue-600 group-hover:text-white transition duration-300" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-gray-900">Best Price Guarantee</h3>
+              <p className="text-gray-600">Find a lower price? We'll match it and give you an extra 10% off your stay.</p>
+            </div>
+            
+            <div className="text-center group">
+              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-600 transition duration-300">
+                <Clock className="w-10 h-10 text-green-600 group-hover:text-white transition duration-300" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-gray-900">Flexible Cancellation</h3>
+              <p className="text-gray-600">Free cancellation up to 5 days before check-in. Flexible booking policies.</p>
+            </div>
+            
+            <div className="text-center group">
+              <div className="w-20 h-20 bg-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-purple-600 transition duration-300">
+                <Phone className="w-10 h-10 text-purple-600 group-hover:text-white transition duration-300" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-gray-900">24/7 Support</h3>
+              <p className="text-gray-600">Round-the-clock customer service to assist you anytime, anywhere.</p>
+            </div>
+            
+            <div className="text-center group">
+              <div className="w-20 h-20 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-orange-600 transition duration-300">
+                <Award className="w-10 h-10 text-orange-600 group-hover:text-white transition duration-300" />
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-gray-900">Award Winning</h3>
+              <p className="text-gray-600">Recognized for excellence in hospitality and guest satisfaction.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Our Branches */}
+      <section id="branches" className="py-20 px-6 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Our Locations</h2>
+            <p className="text-xl text-gray-600">Three stunning destinations across beautiful Sri Lanka</p>
+          </div>
+          
+          <div className="grid lg:grid-cols-3 gap-8">
+            {[
+              { 
+                name: 'Sky Nest Colombo', 
+                location: 'Colombo City Center',
+                image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400',
+                features: ['Business District', 'Shopping Malls', 'Airport Access'],
+                rooms: '150 Rooms'
+              },
+              { 
+                name: 'Sky Nest Kandy', 
+                location: 'Kandy Hills',
+                image: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400',
+                features: ['Mountain Views', 'Cultural Sites', 'Tea Gardens'],
+                rooms: '120 Rooms'
+              },
+              { 
+                name: 'Sky Nest Galle', 
+                location: 'Galle Fort',
+                image: 'https://images.unsplash.com/photo-1578774204375-51839d9fde3d?w=400',
+                features: ['Beach Access', 'Historic Fort', 'Ocean Views'],
+                rooms: '80 Rooms'
+              }
+            ].map((branch, index) => (
+              <div key={index} className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition duration-300 group">
+                <div className="relative overflow-hidden">
+                  <img 
+                    src={branch.image} 
+                    alt={branch.name}
+                    className="w-full h-64 object-cover group-hover:scale-110 transition duration-500"
+                  />
+                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
+                    <span className="text-sm font-semibold text-gray-800">{branch.rooms}</span>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <div className="flex items-center mb-2">
+                    <MapPin className="w-4 h-4 text-blue-600 mr-2" />
+                    <span className="text-sm text-gray-600">{branch.location}</span>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3 text-gray-900">{branch.name}</h3>
+                  <div className="space-y-2 mb-4">
+                    {branch.features.map((feature, i) => (
+                      <div key={i} className="flex items-center">
+                        <div className="w-2 h-2 bg-blue-600 rounded-full mr-3"></div>
+                        <span className="text-gray-600 text-sm">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition font-medium">
+                    View Rooms
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Room Categories */}
+      <section id="rooms" className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Room Categories</h2>
+            <p className="text-xl text-gray-600">Luxurious accommodations designed for every traveler</p>
+          </div>
+          
+          <div className="grid lg:grid-cols-3 gap-8">
+            {[
+              { 
+                type: 'Deluxe Room', 
+                price: 'From $120/night',
+                image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400',
+                amenities: ['King Size Bed', 'City View', 'Free WiFi', 'Mini Bar'],
+                size: '35 sqm'
+              },
+              { 
+                type: 'Suite', 
+                price: 'From $200/night',
+                image: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=400',
+                amenities: ['Separate Living Area', 'Ocean/Mountain View', 'Premium Amenities', 'Balcony'],
+                size: '55 sqm'
+              },
+              { 
+                type: 'Presidential Suite', 
+                price: 'From $350/night',
+                image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=400',
+                amenities: ['Private Terrace', 'Butler Service', 'Jacuzzi', 'Dining Area'],
+                size: '85 sqm'
+              }
+            ].map((room, index) => (
+              <div key={index} className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition duration-300 group">
+                <div className="relative overflow-hidden">
+                  <img 
+                    src={room.image} 
+                    alt={room.type}
+                    className="w-full h-48 object-cover group-hover:scale-110 transition duration-500"
+                  />
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
+                    <span className="text-sm font-semibold text-gray-800">{room.size}</span>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-xl font-bold text-gray-900">{room.type}</h3>
+                    <span className="text-blue-600 font-bold">{room.price}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    {room.amenities.map((amenity, i) => (
+                      <div key={i} className="flex items-center">
+                        <div className="w-1.5 h-1.5 bg-blue-600 rounded-full mr-2"></div>
+                        <span className="text-gray-600 text-xs">{amenity}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="w-full bg-gray-900 text-white py-3 rounded-xl hover:bg-gray-800 transition font-medium">
+                    Book Now
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Services */}
+      <section id="services" className="py-20 px-6 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Premium Services</h2>
+            <p className="text-xl text-gray-600">Enhance your stay with our world-class amenities</p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { icon: Coffee, name: 'Room Service', desc: '24/7 dining service' },
+              { icon: Waves, name: 'Spa & Wellness', desc: 'Rejuvenating treatments' },
+              { icon: Car, name: 'Airport Transfer', desc: 'Complimentary shuttle' },
+              { icon: Wifi, name: 'High-Speed WiFi', desc: 'Free internet access' }
+            ].map((service, index) => (
+              <div key={index} className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition text-center">
+                <service.icon className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                <h3 className="font-semibold text-gray-900 mb-2">{service.name}</h3>
+                <p className="text-gray-600 text-sm">{service.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-16 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">SN</span>
+                </div>
+                <div>
+                  <span className="text-2xl font-bold">Sky Nest</span>
+                  <p className="text-xs text-gray-400 -mt-1">Hotel & Resort</p>
+                </div>
+              </div>
+              <p className="text-gray-400 mb-4">Experience luxury and comfort across Sri Lanka's most beautiful destinations.</p>
+              <div className="flex space-x-4">
+                <Phone className="w-5 h-5 text-blue-400" />
+                <span className="text-gray-400">+94 11 234 5678</span>
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="font-bold mb-4">Quick Links</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li><Link href="/guest/search-rooms" className="hover:text-white transition">Book Now</Link></li>
+                <li><a href="#rooms" className="hover:text-white transition">Rooms</a></li>
+                <li><a href="#services" className="hover:text-white transition">Services</a></li>
+                <li><Link href="/guest/help" className="hover:text-white transition">Help Center</Link></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-bold mb-4">Our Locations</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li>Colombo City Center</li>
+                <li>Kandy Hills</li>
+                <li>Galle Fort</li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-bold mb-4">Portals</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li><Link href="/auth/login" className="hover:text-white transition">Guest Login</Link></li>
+                <li><Link href="/auth/staff-login" className="hover:text-white transition">Staff Portal</Link></li>
+                <li><Link href="/auth/admin-login" className="hover:text-white transition">Admin Portal</Link></li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="border-t border-gray-800 pt-8 text-center text-gray-400">
+            <p>&copy; 2025 Sky Nest Hotel & Resort. All rights reserved. | Designed for excellence in hospitality.</p>
+          </div>
+        </div>
       </footer>
     </div>
-  );
+  )
 }
