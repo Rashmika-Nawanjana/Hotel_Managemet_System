@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  GUEST
+  STAFF
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum IdType {
+  PASSPORT
+  NATIONAL_ID
+  DRIVING_LICENSE
+}
+
+// Main User Table
+model User {
+  id              String        @id @default(cuid())
+  email           String        @unique
+  password        String        // Hashed
+  role            UserRole      @default(GUEST)
+  status          UserStatus    @default(ACTIVE)
+  emailVerified   Boolean       @default(false)
+  
+  // Personal Information
+  firstName       String
+  lastName        String
+  phone           String
+  dateOfBirth     DateTime
+  nationality     String
+  
+  // ID Information
+  idType          IdType
+  idNumber        String
+  
+  // Address Information
+  address         String
+  city            String
+  postalCode      String
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  lastLoginAt     DateTime?
+  
+  // Relations
+  guestProfile        GuestProfile?
+  staffProfile        StaffProfile?
+  verificationTokens  VerificationToken[]
+
+  @@map("users")
+}
+
+// Guest-specific profile
+model GuestProfile {
+  id                String   @id @default(cuid())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String   @unique
+
+  // Loyalty & Stats
+  loyaltyPoints     Int      @default(0)
+  memberSince       DateTime @default(now())
+  totalBookings     Int      @default(0)
+  totalSpent        Decimal  @default(0) @db.Decimal(10, 2)
+
+  // Room Preferences
+  preferredRoomType String?
+  preferredBedType  String?
+  smokingPreference String?  @default("non-smoking")
+  floorPreference   String?
+  pillowType        String?
+
+  // Communication Preferences
+  newsletter        Boolean  @default(true)
+  emailNotifications Boolean @default(true)
+  smsNotifications  Boolean  @default(true)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("guest_profiles")
+}
+
+// Staff-specific profile
+model StaffProfile {
+  id                String   @id @default(cuid())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String   @unique
+
+  employeeId        String   @unique
+  branchId          String
+  branch            Branch   @relation(fields: [branchId], references: [id])
+
+  department        String
+  position          String
+  salary            Decimal? @db.Decimal(10, 2)
+  hireDate          DateTime
+
+  // Performance
+  rating            Decimal? @db.Decimal(3, 2)
+  totalServices     Int      @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("staff_profiles")
+}
+
+// Branch Model
+model Branch {
+  id          String         @id @default(cuid())
+  name        String
+  slug        String         @unique
+  location    String
+  address     String
+  phone       String
+  email       String
+
+  totalRooms  Int
+  status      String         @default("operational")
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  staff       StaffProfile[]
+
+  @@map("branches")
+}
+
+// Verification Token Model
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  used      Boolean  @default(false)
+
+  @@map("verification_tokens")
+}

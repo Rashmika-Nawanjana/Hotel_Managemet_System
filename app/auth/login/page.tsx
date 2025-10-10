@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function GuestLoginPage() {
   const [email, setEmail] = useState('')
@@ -11,26 +11,90 @@ export default function GuestLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
+  const [showResendVerification, setShowResendVerification] = useState(false)
+  const [unverifiedEmail, setUnverifiedEmail] = useState('')
   
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const registered = searchParams.get('registered')
+  const verified = searchParams.get('verified')
+  const errorParam = searchParams.get('error')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
+    setShowResendVerification(false)
 
     try {
-      // TODO: Implement actual login API call
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
-      
-      // For now, simulate successful login
-      if (email && password) {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        // Check if error is due to unverified email
+        if (data.code === 'EMAIL_NOT_VERIFIED') {
+          setError(data.error)
+          setShowResendVerification(true)
+          setUnverifiedEmail(data.email)
+        } else {
+          setError(data.error || 'Login failed. Please try again.')
+        }
+        return
+      }
+
+      // Store token in localStorage (optional, since we also use cookies)
+      if (rememberMe) {
+        localStorage.setItem('auth-token', data.token)
+      }
+
+      // Store user data
+      localStorage.setItem('user', JSON.stringify(data.user))
+
+      // Redirect based on user role
+      if (data.user.role === 'GUEST') {
         router.push('/guest/dashboard')
-      } else {
-        setError('Please fill in all fields')
+      } else if (data.user.role === 'STAFF') {
+        router.push('/staff/dashboard')
+      } else if (data.user.role === 'ADMIN') {
+        router.push('/admin/dashboard')
       }
     } catch (err) {
-      setError('Invalid email or password')
+      console.error('Login error:', err)
+      setError('Network error. Please check your connection and try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: unverifiedEmail }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setError('')
+        setShowResendVerification(false)
+        alert('Verification email sent! Please check your inbox.')
+      } else {
+        setError(data.error || 'Failed to resend verification email.')
+      }
+    } catch (err) {
+      setError('Failed to resend verification email. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -113,11 +177,62 @@ export default function GuestLoginPage() {
             <p className="text-gray-600">Welcome back! Please enter your details.</p>
           </div>
 
-          {error && (
+          {/* Success Message - Registration */}
+          {registered && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center">
+                <span className="text-green-500 mr-2">✓</span>
+                <span className="text-green-700 text-sm">
+                  Registration successful! Please check your email to verify your account before signing in.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Success Message - Email Verified */}
+          {verified && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center">
+                <span className="text-green-500 mr-2">✓</span>
+                <span className="text-green-700 text-sm">
+                  Email verified successfully! You can now sign in.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error Messages from URL params */}
+          {errorParam && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center">
                 <span className="text-red-500 mr-2">⚠️</span>
-                <span className="text-red-700 text-sm">{error}</span>
+                <span className="text-red-700 text-sm">
+                  {errorParam === 'invalid_token' && 'Invalid verification link.'}
+                  {errorParam === 'token_expired' && 'Verification link has expired.'}
+                  {errorParam === 'token_already_used' && 'This verification link has already been used.'}
+                  {errorParam === 'verification_failed' && 'Verification failed. Please try again.'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message - Login Error */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start">
+                <span className="text-red-500 mr-2 mt-0.5">⚠️</span>
+                <div className="flex-1">
+                  <span className="text-red-700 text-sm block">{error}</span>
+                  {showResendVerification && (
+                    <button
+                      onClick={handleResendVerification}
+                      disabled={isLoading}
+                      className="mt-3 text-sm text-blue-600 hover:text-blue-500 font-medium underline"
+                    >
+                      Resend verification email
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -199,35 +314,6 @@ export default function GuestLoginPage() {
               )}
             </button>
           </form>
-
-          <div className="mt-8">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-50 text-gray-500">Or continue with</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                className="w-full inline-flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
-              >
-                <span className="text-lg mr-2">🅖</span>
-                Google
-              </button>
-
-              <button
-                type="button"
-                className="w-full inline-flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 transition"
-              >
-                <span className="text-lg mr-2">📘</span>
-                Facebook
-              </button>
-            </div>
-          </div>
 
           <p className="mt-8 text-center text-sm text-gray-600">
             Don't have an account?{' '}
