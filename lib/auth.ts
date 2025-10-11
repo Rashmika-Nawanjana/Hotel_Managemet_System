@@ -19,11 +19,17 @@ export async function verifyPassword(
 
 // Generate JWT token
 export function generateToken(userId: string, role: string): string {
-  return jwt.sign(
+  console.log('🔐 Generating token with:', { userId, role })
+  console.log('🔑 JWT_SECRET exists:', !!JWT_SECRET)
+  
+  const token = jwt.sign(
     { userId, role },
     JWT_SECRET,
     { expiresIn: '7d' }
   )
+  
+  console.log('✅ Token generated, length:', token.length)
+  return token
 }
 
 // Verify JWT token

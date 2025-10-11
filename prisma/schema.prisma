@@ -26,6 +26,24 @@ enum IdType {
   DRIVING_LICENSE
 }
 
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+enum AmenityCategory {
+  ENTERTAINMENT
+  COMFORT
+  BATHROOM
+  TECHNOLOGY
+  FOOD_BEVERAGE
+  SAFETY
+  ACCESSIBILITY
+}
+
 // Main User Table
 model User {
   id              String        @id @default(cuid())
@@ -50,6 +68,10 @@ model User {
   address         String
   city            String
   postalCode      String
+  
+  // Two-Factor Authentication (for Admin/Staff)
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?   // Store encrypted TOTP secret
   
   // Timestamps
   createdAt       DateTime      @default(now())
@@ -137,8 +159,129 @@ model Branch {
   updatedAt   DateTime       @updatedAt
 
   staff       StaffProfile[]
+  roomTypes   RoomType[]      
+  rooms       Room[]          
+
 
   @@map("branches")
+}
+
+// Room Type Model - Categories of rooms
+model RoomType {
+  id                String   @id @default(cuid())
+  name              String   // "Deluxe Room", "Executive Suite", "Standard Room"
+  slug              String   @unique
+  description       String   @db.Text
+  shortDescription  String?  @db.VarChar(200)
+  
+  // Pricing
+  basePrice         Decimal  @db.Decimal(10, 2)
+  
+  // Specifications
+  maxOccupancy      Int      // Maximum number of guests
+  bedType           String   // "King", "Queen", "Twin", "Double"
+  numberOfBeds      Int      @default(1)
+  roomSize          Int      // in square meters
+  
+  // View type
+  viewType          String?  // "Ocean View", "Garden View", "City View", "Pool View"
+  
+  // Branch
+  branchId          String
+  branch            Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  // Status
+  status            String   @default("active") // active, inactive, coming_soon
+  
+  // Featured
+  isFeatured        Boolean  @default(false)
+  popularityScore   Int      @default(0)
+  
+  // Relations
+  rooms             Room[]
+  amenities         RoomTypeAmenity[]
+  images            RoomImage[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("room_types")
+}
+
+// Individual Room Instances
+model Room {
+  id              String      @id @default(cuid())
+  roomNumber      String      // "101", "205", "3A", "Presidential-1"
+  floor           Int
+  
+  roomTypeId      String
+  roomType        RoomType    @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  
+  branchId        String
+  branch          Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  status          RoomStatus  @default(AVAILABLE)
+  
+  // Additional notes for maintenance, special features, etc.
+  notes           String?     @db.Text
+  
+  // Last cleaned timestamp
+  lastCleaned     DateTime?
+  lastMaintenance DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@unique([roomNumber, branchId])
+  @@map("rooms")
+}
+
+// Amenities (WiFi, TV, Mini-bar, etc.)
+model Amenity {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  icon            String?           // Icon name or emoji
+  description     String?
+  category        AmenityCategory
+  
+  roomTypes       RoomTypeAmenity[]
+  
+  createdAt       DateTime          @default(now())
+  
+  @@map("amenities")
+}
+
+// Junction table for Room Types and Amenities (Many-to-Many)
+model RoomTypeAmenity {
+  id              String   @id @default(cuid())
+  
+  roomTypeId      String
+  roomType        RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  
+  amenityId       String
+  amenity         Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@unique([roomTypeId, amenityId])
+  @@map("room_type_amenities")
+}
+
+// Room Images
+model RoomImage {
+  id              String   @id @default(cuid())
+  url             String   // Image URL (cloud storage)
+  caption         String?
+  altText         String?
+  isPrimary       Boolean  @default(false) // Main display image
+  order           Int      @default(0)     // Display order
+  
+  roomTypeId      String
+  roomType        RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@map("room_images")
 }
 
 // Verification Token Model

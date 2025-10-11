@@ -57,12 +57,24 @@ export default function HomePage() {
     };
   }, [showUserMenu]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Call logout API to clear HTTP-only cookie
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    // Clear localStorage
     localStorage.removeItem("user");
     localStorage.removeItem("auth-token");
     setUser(null);
     setShowUserMenu(false);
-    router.push("/");
+
+    // Force a hard reload to clear any cached data
+    window.location.href = "/";
   };
 
   const branches = [
