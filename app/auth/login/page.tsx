@@ -19,6 +19,7 @@ export default function GuestLoginPage() {
   const registered = searchParams.get('registered')
   const verified = searchParams.get('verified')
   const errorParam = searchParams.get('error')
+  const passwordReset = searchParams.get('password_reset')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -196,6 +197,18 @@ export default function GuestLoginPage() {
                 <span className="text-green-500 mr-2">✓</span>
                 <span className="text-green-700 text-sm">
                   Email verified successfully! You can now sign in.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Success Message - password reset */}
+                    {passwordReset && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center">
+                <span className="text-green-500 mr-2">✓</span>
+                <span className="text-green-700 text-sm">
+                  Password reset successful! You can now sign in with your new password.
                 </span>
               </div>
             </div>
