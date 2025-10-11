@@ -22,12 +22,14 @@ export async function GET(request: NextRequest) {
     const branchId = searchParams.get('branchId')
     const roomTypeId = searchParams.get('roomTypeId')
     const status = searchParams.get('status')
+    const floor = searchParams.get('floor')
 
     const where: any = {}
 
     if (branchId) where.branchId = branchId
     if (roomTypeId) where.roomTypeId = roomTypeId
     if (status) where.status = status
+    if (floor) where.floor = parseInt(floor)
 
     const rooms = await prisma.room.findMany({
       where,
@@ -37,6 +39,8 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             basePrice: true,
+            bedType: true,
+            maxOccupancy: true,
           },
         },
         branch: {
@@ -50,11 +54,20 @@ export async function GET(request: NextRequest) {
       orderBy: [{ floor: 'asc' }, { roomNumber: 'asc' }],
     })
 
+    // Transform to convert Decimal to number
+    const transformedRooms = rooms.map((room) => ({
+      ...room,
+      roomType: {
+        ...room.roomType,
+        basePrice: parseFloat(room.roomType.basePrice.toString()),
+      },
+    }))
+
     return NextResponse.json(
       {
         success: true,
-        count: rooms.length,
-        data: rooms,
+        count: transformedRooms.length,
+        data: transformedRooms,
       },
       { status: 200 }
     )
@@ -113,10 +126,10 @@ export async function POST(request: NextRequest) {
     const room = await prisma.room.create({
       data: {
         roomNumber,
-        floor: parseInt(floor),
+        floor: parseInt(floor.toString()),
         roomTypeId,
         branchId,
-        notes,
+        notes: notes || null,
         status: 'AVAILABLE',
       },
       include: {

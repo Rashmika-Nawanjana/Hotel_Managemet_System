@@ -10,15 +10,106 @@ function generateSlug(name: string): string {
     .replace(/(^-|-$)/g, '')
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    // Check authentication
+    const token = request.cookies.get('auth-token')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const decoded = verifyToken(token)
+    if (!decoded || (decoded.role !== 'ADMIN' && decoded.role !== 'STAFF')) {
+      return NextResponse.json(
+        { error: 'Forbidden - Admin access required' },
+        { status: 403 }
+      )
+    }
+
+    // Get all room types (including inactive)
+    const roomTypes = await prisma.roomType.findMany({
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+            location: true,
+          },
+        },
+        amenities: {
+          include: {
+            amenity: true,
+          },
+        },
+        images: {
+          orderBy: {
+            order: 'asc',
+          },
+        },
+        _count: {
+          select: {
+            rooms: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    })
+
+    console.log('📊 Fetched room types:', roomTypes.length)
+
+    // Transform data and convert Decimal to number
+    const transformedRoomTypes = roomTypes.map((roomType) => {
+      console.log(`🏨 Room: ${roomType.name}, Images: ${roomType.images?.length || 0}`)
+      
+      return {
+        id: roomType.id,
+        name: roomType.name,
+        slug: roomType.slug,
+        description: roomType.description,
+        shortDescription: roomType.shortDescription,
+        basePrice: parseFloat(roomType.basePrice.toString()),
+        maxOccupancy: roomType.maxOccupancy,
+        bedType: roomType.bedType,
+        numberOfBeds: roomType.numberOfBeds,
+        roomSize: roomType.roomSize,
+        viewType: roomType.viewType,
+        isFeatured: roomType.isFeatured,
+        popularityScore: roomType.popularityScore,
+        status: roomType.status,
+        branch: roomType.branch,
+        images: roomType.images || [],
+        amenities: roomType.amenities.map((ra) => ra.amenity),
+        availableRooms: roomType._count.rooms,
+        createdAt: roomType.createdAt,
+        updatedAt: roomType.updatedAt,
+      }
+    })
+
+    return NextResponse.json(
+      {
+        success: true,
+        count: transformedRoomTypes.length,
+        data: transformedRoomTypes,
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error('❌ Error fetching room types:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch room types' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
     const token = request.cookies.get('auth-token')?.value
     if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const decoded = verifyToken(token)
@@ -70,6 +161,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('🆕 Creating room type:', name)
+    console.log('📸 Images to save:', images?.length || 0)
+
     // Create room type with amenities and images
     const roomType = await prisma.roomType.create({
       data: {
@@ -86,7 +180,7 @@ export async function POST(request: NextRequest) {
         branchId,
         isFeatured: isFeatured || false,
         status: 'active',
-        amenities: amenityIds
+        amenities: amenityIds && amenityIds.length > 0
           ? {
               createMany: {
                 data: amenityIds.map((amenityId: string) => ({
@@ -95,7 +189,7 @@ export async function POST(request: NextRequest) {
               },
             }
           : undefined,
-        images: images
+        images: images && images.length > 0
           ? {
               createMany: {
                 data: images.map((image: any, index: number) => ({
@@ -120,6 +214,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    console.log('✅ Room type created with', roomType.images?.length || 0, 'images')
+
     return NextResponse.json(
       {
         success: true,
@@ -129,74 +225,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
-    console.error('Error creating room type:', error)
+    console.error('❌ Error creating room type:', error)
     return NextResponse.json(
       { error: 'Failed to create room type' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    // Check authentication
-    const token = request.cookies.get('auth-token')?.value
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded || (decoded.role !== 'ADMIN' && decoded.role !== 'STAFF')) {
-      return NextResponse.json(
-        { error: 'Forbidden - Admin access required' },
-        { status: 403 }
-      )
-    }
-
-    // Get all room types (including inactive)
-    const roomTypes = await prisma.roomType.findMany({
-      include: {
-        branch: true,
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        images: true,
-        _count: {
-          select: {
-            rooms: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
-
-    // Convert Decimal types to numbers for JSON serialization
-    const serializedRoomTypes = roomTypes.map((roomType: any) => ({
-      ...roomType,
-      basePrice: Number(roomType.basePrice),
-      roomSize: Number(roomType.roomSize),
-      popularityScore: Number(roomType.popularityScore),
-    }))
-
-    return NextResponse.json(
-      {
-        success: true,
-        count: serializedRoomTypes.length,
-        data: serializedRoomTypes,
-      },
-      { status: 200 }
-    )
-  } catch (error) {
-    console.error('Error fetching room types:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch room types' },
       { status: 500 }
     )
   }

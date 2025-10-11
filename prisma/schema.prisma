@@ -44,6 +44,23 @@ enum AmenityCategory {
   ACCESSIBILITY
 }
 
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
 // Main User Table
 model User {
   id              String        @id @default(cuid())
@@ -52,6 +69,8 @@ model User {
   role            UserRole      @default(GUEST)
   status          UserStatus    @default(ACTIVE)
   emailVerified   Boolean       @default(false)
+
+  bookings      Booking[] 
   
   // Personal Information
   firstName       String
@@ -221,7 +240,7 @@ model Room {
   branch          Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   
   status          RoomStatus  @default(AVAILABLE)
-  
+  bookings        Booking[]
   // Additional notes for maintenance, special features, etc.
   notes           String?     @db.Text
   
@@ -309,4 +328,43 @@ model PasswordResetToken {
   used      Boolean  @default(false)
 
   @@map("password_reset_tokens")
+}
+
+// Bookings
+model Booking {
+  id                String   @id @default(cuid())
+  bookingReference  String   @unique // e.g., "BK-2025-ABC123"
+  
+  // Relations
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  roomId            String
+  room              Room     @relation(fields: [roomId], references: [id])
+  
+  // Booking Details
+  checkInDate       DateTime
+  checkOutDate      DateTime
+  numberOfGuests    Int
+  
+  // Pricing
+  totalPrice        Decimal  @db.Decimal(10, 2)
+  
+  // Status
+  status            BookingStatus   @default(PENDING)
+  paymentStatus     PaymentStatus   @default(PENDING)
+  
+  // Additional Info
+  specialRequests   String?  @db.Text
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([roomId])
+  @@index([status])
+  @@index([checkInDate])
+  @@index([checkOutDate])
+  @@map("bookings")
 }

@@ -3,10 +3,10 @@ import prisma from '@/lib/prisma'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = params
+    const { slug } = await params
 
     const roomType = await prisma.roomType.findUnique({
       where: { slug },
@@ -70,7 +70,7 @@ export async function GET(
       slug: roomType.slug,
       description: roomType.description,
       shortDescription: roomType.shortDescription,
-      basePrice: roomType.basePrice,
+      basePrice: parseFloat(roomType.basePrice.toString()),
       maxOccupancy: roomType.maxOccupancy,
       bedType: roomType.bedType,
       numberOfBeds: roomType.numberOfBeds,

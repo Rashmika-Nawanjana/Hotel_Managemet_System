@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface Branch {
@@ -17,13 +17,39 @@ interface Amenity {
   category: string
 }
 
-export default function CreateRoomTypePage() {
+interface RoomType {
+  id: string
+  name: string
+  description: string
+  shortDescription: string
+  basePrice: number
+  maxOccupancy: number
+  bedType: string
+  numberOfBeds: number
+  roomSize: number
+  viewType: string
+  status: string
+  isFeatured: boolean
+  branch: {
+    id: string
+  }
+  amenities: Array<{
+    id: string
+  }>
+  images: Array<{
+    id: string
+    url: string
+  }>
+}
+
+export default function EditRoomTypePage() {
   const router = useRouter()
+  const params = useParams()
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
   const [branches, setBranches] = useState<Branch[]>([])
   const [amenities, setAmenities] = useState<Amenity[]>([])
   const [error, setError] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
 
   // Form state
   const [formData, setFormData] = useState({
@@ -37,6 +63,7 @@ export default function CreateRoomTypePage() {
     roomSize: '',
     viewType: '',
     branchId: '',
+    status: 'active',
     isFeatured: false,
   })
 
@@ -44,9 +71,57 @@ export default function CreateRoomTypePage() {
   const [imageUrls, setImageUrls] = useState<string[]>([''])
 
   useEffect(() => {
-    fetchBranches()
-    fetchAmenities()
-  }, [])
+    if (params.id) {
+      fetchRoomType()
+      fetchBranches()
+      fetchAmenities()
+    }
+  }, [params.id])
+
+  const fetchRoomType = async () => {
+    try {
+      const response = await fetch(`/api/admin/rooms/${params.id}`, {
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch room type')
+      }
+
+      const data = await response.json()
+      const roomType: RoomType = data.data
+
+      // Pre-fill form data
+      setFormData({
+        name: roomType.name,
+        description: roomType.description,
+        shortDescription: roomType.shortDescription || '',
+        basePrice: roomType.basePrice.toString(),
+        maxOccupancy: roomType.maxOccupancy.toString(),
+        bedType: roomType.bedType,
+        numberOfBeds: roomType.numberOfBeds.toString(),
+        roomSize: roomType.roomSize.toString(),
+        viewType: roomType.viewType || '',
+        branchId: roomType.branch.id,
+        status: roomType.status,
+        isFeatured: roomType.isFeatured,
+      })
+
+      // Set selected amenities
+      setSelectedAmenities(roomType.amenities.map((a: any) => a.id))
+
+      // Set image URLs
+      if (roomType.images && roomType.images.length > 0) {
+        setImageUrls(roomType.images.map((img: any) => img.url))
+      }
+
+      setIsFetching(false)
+    } catch (err) {
+      console.error('Error fetching room type:', err)
+      setError('Failed to load room type')
+      setIsFetching(false)
+    }
+  }
 
   const fetchBranches = async () => {
     try {
@@ -131,8 +206,8 @@ export default function CreateRoomTypePage() {
           altText: formData.name,
         }))
 
-      const response = await fetch('/api/admin/rooms', {
-        method: 'POST',
+      const response = await fetch(`/api/admin/rooms/${params.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -151,21 +226,17 @@ export default function CreateRoomTypePage() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create room type')
+        throw new Error(data.error || 'Failed to update room type')
       }
 
-      setSuccessMessage('Room type created successfully!')
-      
-      // Redirect after 2 seconds
-      setTimeout(() => {
-        router.push('/admin/rooms')
-      }, 2000)
+      alert('Room type updated successfully!')
+      router.push(`/admin/rooms/${params.id}`)
     } catch (err: unknown) {
-      console.error('Error creating room type:', err)
+      console.error('Error updating room type:', err)
       if (err instanceof Error) {
-        setError(err.message || 'Failed to create room type')
+        setError(err.message || 'Failed to update room type')
       } else {
-        setError('Failed to create room type')
+        setError('Failed to update room type')
       }
     } finally {
       setIsLoading(false)
@@ -184,37 +255,33 @@ export default function CreateRoomTypePage() {
     return acc
   }, {} as Record<string, Amenity[]>)
 
+  if (isFetching) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <Link
-            href="/admin/rooms"
+            href={`/admin/rooms/${params.id}`}
             className="text-blue-600 hover:text-blue-500 flex items-center mb-2"
           >
-            ← Back to Room Types
+            ← Back to Room Details
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Room Type</h1>
-          <p className="text-gray-600">Add a new room category to your inventory</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Edit Room Type</h1>
+          <p className="text-gray-600">Update room category information</p>
         </div>
       </div>
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
           {error}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <div className="flex items-center">
-            <span className="text-green-500 mr-3 text-2xl">✓</span>
-            <div>
-              <p className="text-green-800 font-semibold">{successMessage}</p>
-              <p className="text-green-600 text-sm mt-1">Redirecting to room types...</p>
-            </div>
-          </div>
         </div>
       )}
 
@@ -278,6 +345,7 @@ export default function CreateRoomTypePage() {
                 onChange={(e) => handleInputChange('branchId', e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
+                disabled
               >
                 <option value="">Select a branch</option>
                 {branches.map((branch) => (
@@ -286,6 +354,7 @@ export default function CreateRoomTypePage() {
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">Branch cannot be changed after creation</p>
             </div>
 
             <div>
@@ -301,6 +370,21 @@ export default function CreateRoomTypePage() {
                 placeholder="0.00"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Status *
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => handleInputChange('status', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
             </div>
           </div>
 
@@ -516,10 +600,10 @@ export default function CreateRoomTypePage() {
             {isLoading ? (
               <span className="flex items-center justify-center">
                 <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></span>
-                Creating...
+                Updating...
               </span>
             ) : (
-              'Create Room Type'
+              'Update Room Type'
             )}
           </button>
         </div>

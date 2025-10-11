@@ -1,14 +1,38 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+
+interface Booking {
+  id: string
+  bookingReference: string
+  checkInDate: string
+  checkOutDate: string
+  numberOfGuests: number
+  totalPrice: number
+  status: string
+  paymentStatus: string
+  room: {
+    roomNumber: string
+    roomType: {
+      name: string
+      basePrice: number
+    }
+    branch: {
+      name: string
+      location: string
+    }
+  }
+}
 
 export default function PaymentPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const bookingId = searchParams.get('bookingId')
 
+  const [booking, setBooking] = useState<Booking | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [paymentData, setPaymentData] = useState({
     cardNumber: '',
     cardName: '',
@@ -21,21 +45,30 @@ export default function PaymentPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Mock booking data
-  const booking = {
-    id: bookingId || '12345',
-    room: 'Deluxe Ocean View Suite',
-    branch: 'Sky Nest Galle',
-    checkIn: '2025-11-10',
-    checkOut: '2025-11-14',
-    guests: 2,
-    nights: 4,
-    roomPrice: 200,
-    serviceFee: 80,
-    taxes: 96,
-    total: 976,
-    paymentType: 'full', // or 'partial'
-    amountDue: 976
+  useEffect(() => {
+    if (bookingId) {
+      fetchBooking()
+    }
+  }, [bookingId])
+
+  const fetchBooking = async () => {
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}`, {
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch booking')
+      }
+
+      const data = await response.json()
+      setBooking(data.data)
+    } catch (err) {
+      console.error('Error fetching booking:', err)
+      setErrors({ general: 'Failed to load booking details' })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const formatCardNumber = (value: string) => {
@@ -94,22 +127,74 @@ export default function PaymentPage() {
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validatePayment()) return
+    if (paymentMethod === 'card' && !validatePayment()) return
 
     setIsProcessing(true)
 
     try {
-      // TODO: Implement actual payment API call
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      // Update booking payment status
+      const response = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Payment processing failed')
+      }
 
       // Redirect to confirmation page
-      router.push(`/guest/booking/confirmation?bookingId=${booking.id}`)
+      router.push(`/guest/booking/confirmation?bookingId=${bookingId}`)
     } catch (err) {
       setErrors({ general: 'Payment failed. Please try again or use a different payment method.' })
     } finally {
       setIsProcessing(false)
     }
   }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!booking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-xl text-gray-600 mb-4">Booking not found</p>
+          <Link href="/rooms" className="text-blue-600 hover:underline">
+            Browse rooms
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // Calculate nights and pricing
+  const checkIn = new Date(booking.checkInDate)
+  const checkOut = new Date(booking.checkOutDate)
+  const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+  
+  const basePrice = typeof booking.room.roomType.basePrice === 'string' 
+    ? parseFloat(booking.room.roomType.basePrice) 
+    : booking.room.roomType.basePrice
+  
+  const roomTotal = nights * basePrice
+  const serviceFee = Math.round(roomTotal * 0.1)
+  const taxes = Math.round(roomTotal * 0.12)
+  const grandTotal = roomTotal + serviceFee + taxes
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -328,7 +413,7 @@ export default function PaymentPage() {
                   <button
                     onClick={handlePayment}
                     disabled={isProcessing}
-                    className="bg-yellow-500 text-gray-900 px-8 py-3 rounded-lg hover:bg-yellow-600 transition font-semibold"
+                    className="bg-yellow-500 text-gray-900 px-8 py-3 rounded-lg hover:bg-yellow-600 transition font-semibold disabled:opacity-50"
                   >
                     Continue to PayPal
                   </button>
@@ -343,12 +428,18 @@ export default function PaymentPage() {
                     <p><strong>Account Name:</strong> Sky Nest Hotels (Pvt) Ltd</p>
                     <p><strong>Account Number:</strong> 1234567890</p>
                     <p><strong>SWIFT Code:</strong> CCEYLKLX</p>
-                    <p><strong>Reference:</strong> Booking #{booking.id}</p>
+                    <p><strong>Reference:</strong> {booking.bookingReference}</p>
                   </div>
                   <p className="mt-4 text-sm text-blue-900">
                     Please include your booking reference number in the transfer details.
                     Your booking will be confirmed once payment is received (usually within 1-2 business days).
                   </p>
+                  <button
+                    onClick={handlePayment}
+                    className="w-full mt-4 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold"
+                  >
+                    I've Made the Transfer
+                  </button>
                 </div>
               )}
             </div>
@@ -374,47 +465,52 @@ export default function PaymentPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-4">Order Summary</h2>
 
               <div className="mb-4 pb-4 border-b">
-                <h3 className="font-semibold text-gray-900 mb-1">{booking.room}</h3>
-                <p className="text-sm text-gray-600">{booking.branch}</p>
+                <h3 className="font-semibold text-gray-900 mb-1">{booking.room.roomType.name}</h3>
+                <p className="text-sm text-gray-600">{booking.room.branch.name}</p>
+                <p className="text-xs text-gray-500">Room {booking.room.roomNumber}</p>
               </div>
 
               <div className="space-y-2 mb-4 pb-4 border-b text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Check-in</span>
-                  <span className="font-medium text-gray-900">{booking.checkIn}</span>
+                  <span className="font-medium text-gray-900">
+                    {new Date(booking.checkInDate).toLocaleDateString()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Check-out</span>
-                  <span className="font-medium text-gray-900">{booking.checkOut}</span>
+                  <span className="font-medium text-gray-900">
+                    {new Date(booking.checkOutDate).toLocaleDateString()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Guests</span>
-                  <span className="font-medium text-gray-900">{booking.guests} guests</span>
+                  <span className="font-medium text-gray-900">{booking.numberOfGuests} guests</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Nights</span>
-                  <span className="font-medium text-gray-900">{booking.nights} nights</span>
+                  <span className="font-medium text-gray-900">{nights} nights</span>
                 </div>
               </div>
 
               <div className="space-y-2 mb-4 pb-4 border-b text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">${booking.roomPrice} × {booking.nights} nights</span>
-                  <span className="text-gray-900">${booking.roomPrice * booking.nights}</span>
+                  <span className="text-gray-600">LKR {basePrice.toFixed(2)} × {nights} nights</span>
+                  <span className="text-gray-900">LKR {roomTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Service fee</span>
-                  <span className="text-gray-900">${booking.serviceFee}</span>
+                  <span className="text-gray-900">LKR {serviceFee.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Taxes</span>
-                  <span className="text-gray-900">${booking.taxes}</span>
+                  <span className="text-gray-900">LKR {taxes.toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="flex justify-between font-bold text-lg mb-6">
                 <span>Amount Due</span>
-                <span className="text-blue-600">${booking.amountDue}</span>
+                <span className="text-blue-600">LKR {grandTotal.toFixed(2)}</span>
               </div>
 
               {paymentMethod === 'card' && (
@@ -429,7 +525,7 @@ export default function PaymentPage() {
                       Processing Payment...
                     </div>
                   ) : (
-                    `Pay $${booking.amountDue}`
+                    `Pay LKR ${grandTotal.toFixed(2)}`
                   )}
                 </button>
               )}
