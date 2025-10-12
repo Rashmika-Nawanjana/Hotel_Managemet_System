@@ -1,33 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query } from '@/lib/db-queries'
+
+interface Amenity {
+  id: string
+  name: string
+  icon: string | null
+  category: string
+  createdAt: Date
+  updatedAt: Date
+}
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const category = searchParams.get('category')
 
-    const where: any = {}
+    let amenities: Amenity[]
 
     if (category) {
-      where.category = category
+      amenities = await query<Amenity>(
+        'SELECT * FROM amenities WHERE category = $1 ORDER BY name ASC',
+        [category]
+      )
+    } else {
+      amenities = await query<Amenity>(
+        'SELECT * FROM amenities ORDER BY name ASC'
+      )
     }
 
-    const amenities = await prisma.amenity.findMany({
-      where,
-      orderBy: {
-        name: 'asc',
-      },
-    })
-
     // Group by category
-    const amenitiesByCategory = amenities.reduce((acc, amenity) => {
+    const amenitiesByCategory = amenities.reduce((acc: Record<string, Amenity[]>, amenity: Amenity) => {
       const cat = amenity.category
       if (!acc[cat]) {
         acc[cat] = []
       }
       acc[cat].push(amenity)
       return acc
-    }, {} as Record<string, any[]>)
+    }, {} as Record<string, Amenity[]>)
 
     return NextResponse.json(
       {

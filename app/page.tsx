@@ -29,14 +29,29 @@ export default function HomePage() {
   const [branch, setBranch] = useState("");
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
+    // Fetch current user from API (checks HTTP-only cookie)
+    const fetchUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUser();
   }, []);
 
   useEffect(() => {
@@ -58,24 +73,35 @@ export default function HomePage() {
   }, [showUserMenu]);
 
   const handleLogout = async () => {
-    try {
-      // Call logout API to clear HTTP-only cookie
-      await fetch("/api/auth/logout", {
-        method: "POST",
-      });
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+  try {
+    // Call logout API to clear HTTP-only cookie
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
 
-    // Clear localStorage
-    localStorage.removeItem("user");
-    localStorage.removeItem("auth-token");
+    if (response.ok) {
+      // Clear user state
+      setUser(null);
+      setShowUserMenu(false);
+
+      // Clear localStorage
+      localStorage.removeItem("user");
+      localStorage.removeItem("auth-token");
+
+      // Force page reload to clear all state
+      window.location.href = "/";
+    }
+  } catch (error) {
+    console.error("Logout error:", error);
+    
+    // Even if API fails, clear client-side data
     setUser(null);
     setShowUserMenu(false);
-
-    // Force a hard reload to clear any cached data
+    localStorage.clear();
     window.location.href = "/";
-  };
+  }
+};
 
   const branches = [
     { id: "colombo", name: "Colombo", location: "Colombo City Center" },
@@ -132,7 +158,10 @@ export default function HomePage() {
             Staff Portal
           </Link>
 
-          {user ? (
+          {isLoading ? (
+            // Loading state
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          ) : user ? (
             // Logged in user menu
             <div className="relative user-menu-container">
               <button
@@ -148,6 +177,21 @@ export default function HomePage() {
                 <span className="font-medium hidden md:block">
                   {user.firstName}
                 </span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${
+                    showUserMenu ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </button>
 
               {showUserMenu && (
@@ -159,6 +203,9 @@ export default function HomePage() {
                     <p className="text-xs text-gray-500 truncate">
                       {user.email}
                     </p>
+                    <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+                      {user.role}
+                    </span>
                   </div>
 
                   <Link
@@ -184,7 +231,7 @@ export default function HomePage() {
                         onClick={() => setShowUserMenu(false)}
                       >
                         <User size={16} />
-                        <span>Profile</span>
+                        <span>My Profile</span>
                       </Link>
                       <Link
                         href="/guest/my-bookings"
@@ -214,13 +261,13 @@ export default function HomePage() {
             <div className="flex items-center space-x-2">
               <Link
                 href="/auth/login"
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition font-medium"
               >
                 Sign In
               </Link>
               <Link
                 href="/auth/register"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
               >
                 Sign Up
               </Link>
@@ -285,7 +332,7 @@ export default function HomePage() {
                 type="date"
                 value={checkIn}
                 onChange={(e) => setCheckIn(e.target.value)}
-                min="2025-10-01"
+                min={new Date().toISOString().split("T")[0]}
                 className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
               />
             </div>
@@ -300,7 +347,7 @@ export default function HomePage() {
                 type="date"
                 value={checkOut}
                 onChange={(e) => setCheckOut(e.target.value)}
-                min={checkIn || "2025-10-01"}
+                min={checkIn || new Date().toISOString().split("T")[0]}
                 className="w-full text-sm text-gray-700 border-none outline-none bg-transparent"
               />
             </div>
@@ -335,6 +382,7 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Rest of your page content remains the same... */}
       {/* Why Choose Sky Nest */}
       <section className="py-20 px-6">
         <div className="max-w-7xl mx-auto">

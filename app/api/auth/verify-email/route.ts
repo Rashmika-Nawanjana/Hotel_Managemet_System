@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { queryOne, execute } from '@/lib/db-queries'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,57 +7,71 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('token')
 
     if (!token) {
-      return NextResponse.redirect(
-        new URL('/auth/login?error=invalid_token', request.url)
+      return NextResponse.json(
+        { error: 'Verification token is required' },
+        { status: 400 }
       )
     }
+
+    console.log('Email verification attempt with token:', token.substring(0, 10) + '...')
 
     // Find verification token
-    const verificationToken = await prisma.verificationToken.findUnique({
-      where: { token },
-      include: { user: true },
-    })
+    const verificationToken = await queryOne<any>(
+      `SELECT id, "userId", "expiresAt", used 
+       FROM verification_tokens 
+       WHERE token = $1`,
+      [token]
+    )
 
     if (!verificationToken) {
-      return NextResponse.redirect(
-        new URL('/auth/login?error=invalid_token', request.url)
+      return NextResponse.json(
+        { error: 'Invalid verification token' },
+        { status: 400 }
       )
     }
 
-    // Check if token is expired
-    if (verificationToken.expiresAt < new Date()) {
-      return NextResponse.redirect(
-        new URL('/auth/login?error=token_expired', request.url)
-      )
-    }
-
-    // Check if token was already used
+    // Check if already used
     if (verificationToken.used) {
-      return NextResponse.redirect(
-        new URL('/auth/login?error=token_already_used', request.url)
+      return NextResponse.json(
+        { error: 'This verification link has already been used' },
+        { status: 400 }
       )
     }
 
-    // Update user to verified and mark token as used
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: verificationToken.userId },
-        data: { emailVerified: true },
-      }),
-      prisma.verificationToken.update({
-        where: { id: verificationToken.id },
-        data: { used: true },
-      }),
-    ])
+    // Check if expired
+    if (new Date() > new Date(verificationToken.expiresAt)) {
+      return NextResponse.json(
+        { error: 'This verification link has expired. Please request a new one.' },
+        { status: 400 }
+      )
+    }
 
-    // Redirect to login with success message
-    return NextResponse.redirect(
-      new URL('/auth/login?verified=true', request.url)
+    // Update user's email verification status
+    await execute(
+      'UPDATE users SET "emailVerified" = true, "updatedAt" = NOW() WHERE id = $1',
+      [verificationToken.userId]
+    )
+
+    // Mark token as used
+    await execute(
+      'UPDATE verification_tokens SET used = true WHERE id = $1',
+      [verificationToken.id]
+    )
+
+    console.log('✅ Email verified successfully for user:', verificationToken.userId)
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Email verified successfully! You can now sign in.',
+      },
+      { status: 200 }
     )
   } catch (error) {
     console.error('Email verification error:', error)
-    return NextResponse.redirect(
-      new URL('/auth/login?error=verification_failed', request.url)
+    return NextResponse.json(
+      { error: 'Verification failed. Please try again.' },
+      { status: 500 }
     )
   }
 }

@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
-import { verifyPassword, generateToken } from '@/lib/auth'
+import bcrypt from 'bcryptjs'
+import { generateToken } from '@/lib/auth'
+import { queryOne, execute } from '@/lib/db-queries'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, password } = body
+    const { email, password } = await request.json()
 
-    console.log('Login attempt for email:', email)
-
-    // Validation
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
@@ -17,26 +14,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: {
-        guestProfile: true,
-        staffProfile: {
-          include: {
-            branch: true,
-          },
-        },
-      },
-    })
+    console.log('Login attempt for email:', email)
 
-    console.log('User found:', user ? 'Yes' : 'No')
-    if (user) {
-      console.log('Email verified:', user.emailVerified)
-      console.log('User status:', user.status)
-    }
+    // Get user
+    const user = await queryOne<any>(`
+      SELECT 
+        id,
+        email,
+        password,
+        "firstName",
+        "lastName",
+        phone,
+        "dateOfBirth",
+        nationality,
+        "idType",
+        "idNumber",
+        address,
+        city,
+        "postalCode",
+        role,
+        status,
+        "emailVerified",
+        "twoFactorEnabled",
+        "lastLoginAt"
+      FROM users
+      WHERE email = $1
+    `, [email.toLowerCase()])
 
-    // Check if user exists
     if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -44,61 +48,108 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify password
-    const isValidPassword = await verifyPassword(password, user.password)
-    console.log('Password valid:', isValidPassword)
-    
-    if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
-    }
-
-    // Check if email is verified ⭐ NEW CHECK
+    // ✅ Check if email is verified
     if (!user.emailVerified) {
       return NextResponse.json(
         { 
-          error: 'Please verify your email before signing in',
+          error: 'Email not verified',
           code: 'EMAIL_NOT_VERIFIED',
+          message: 'Please verify your email address before logging in. Check your inbox for the verification link.',
           email: user.email
         },
         { status: 403 }
       )
     }
 
-    // Check if account is active
+    // Check if user is active
     if (user.status !== 'ACTIVE') {
       return NextResponse.json(
-        { error: 'Your account has been suspended. Please contact support.' },
+        { error: 'Account is inactive. Please contact support.' },
         { status: 403 }
       )
     }
 
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password)
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
+
+    // Get profile based on role
+    let profile = null
+    if (user.role === 'GUEST') {
+      profile = await queryOne<any>(`
+        SELECT 
+          id,
+          "userId",
+          "loyaltyPoints",
+          "memberSince",
+          "totalBookings",
+          "totalSpent",
+          "preferredRoomType",
+          "preferredBedType",
+          "smokingPreference",
+          "floorPreference",
+          "pillowType",
+          newsletter,
+          "emailNotifications",
+          "smsNotifications"
+        FROM guest_profiles
+        WHERE "userId" = $1
+      `, [user.id])
+    } else if (user.role === 'STAFF' || user.role === 'ADMIN') {
+      profile = await queryOne<any>(`
+        SELECT 
+          id,
+          "userId",
+          "employeeId",
+          "branchId",
+          department,
+          position,
+          salary,
+          "hireDate",
+          rating,
+          "totalServices"
+        FROM staff_profiles
+        WHERE "userId" = $1
+      `, [user.id])
+    }
+
     // Update last login time
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    })
+    await execute(`
+      UPDATE users 
+      SET "lastLoginAt" = NOW() 
+      WHERE id = $1
+    `, [user.id])
 
     // Generate JWT token
-    const token = generateToken(user.id, user.role)
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    })
 
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user
 
-    // Set token in HTTP-only cookie
+    // Create response with cookie
     const response = NextResponse.json(
       {
         success: true,
         message: 'Login successful',
-        user: userWithoutPassword,
+        user: {
+          ...userWithoutPassword,
+          profile,
+        },
         token,
       },
       { status: 200 }
     )
 
-    // Set cookie (expires in 7 days)
+    // Set HTTP-only cookie
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -107,11 +158,13 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
+    console.log('✅ Login successful for:', email)
     return response
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('Login error:', error)
     return NextResponse.json(
-      { error: 'Internal server error. Please try again later.' },
+      { error: 'An error occurred during login' },
       { status: 500 }
     )
   }

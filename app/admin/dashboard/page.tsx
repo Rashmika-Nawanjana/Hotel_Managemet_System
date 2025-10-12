@@ -15,6 +15,31 @@ export default function AdminDashboardPage() {
     lastLogin: "2025-10-02 08:40:15",
   };
 
+  const handleLogout = async () => {
+    try {
+      // Call logout API to clear HTTP-only cookie
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Clear localStorage
+        localStorage.removeItem("user");
+        localStorage.removeItem("auth-token");
+
+        // Force page reload to clear all state
+        window.location.href = "/";
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+
+      // Even if API fails, clear client-side data
+      localStorage.clear();
+      window.location.href = "/";
+    }
+  };
+
   // Mock overall statistics
   const overallStats = {
     totalRevenue: 458920,
@@ -222,12 +247,12 @@ export default function AdminDashboardPage() {
                 <p className="text-sm text-gray-300">{admin.name}</p>
                 <p className="font-semibold text-white">{admin.role}</p>
               </div>
-              <Link
-                href="/auth/admin-login"
+              <button
+                onClick={handleLogout}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
               >
                 Sign Out
-              </Link>
+              </button>
             </div>
           </div>
         </div>

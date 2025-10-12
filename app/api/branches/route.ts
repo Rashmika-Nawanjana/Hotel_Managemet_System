@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query } from '@/lib/db-queries'
 
 export async function GET(request: NextRequest) {
   try {
-    const branches = await prisma.branch.findMany({
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        location: true,
-        address: true,
-        phone: true,
-        email: true,
-        status: true,
-      },
-      where: {
-        status: 'operational',
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    })
+    const branches = await query(
+      `SELECT id, name, slug, location, address, phone, email, status
+       FROM branches
+       WHERE status = 'operational'
+       ORDER BY name ASC`
+    )
 
     return NextResponse.json(
       {

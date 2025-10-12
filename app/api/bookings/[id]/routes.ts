@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { queryOne, execute } from '@/lib/db-queries'
 import { verifyToken } from '@/lib/auth'
 
 export async function GET(
@@ -19,35 +19,69 @@ export async function GET(
 
     const { id } = await params
 
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
-          },
-        },
-        room: {
-          include: {
-            roomType: {
-              include: {
-                images: true,
-                amenities: {
-                  include: {
-                    amenity: true,
-                  },
-                },
-              },
-            },
-            branch: true,
-          },
-        },
-      },
-    })
+    const booking = await queryOne(
+      `SELECT 
+        b.*,
+        json_build_object(
+          'id', u.id,
+          'firstName', u."firstName",
+          'lastName', u."lastName",
+          'email', u.email,
+          'phone', u.phone
+        ) as user,
+        json_build_object(
+          'id', r.id,
+          'roomNumber', r."roomNumber",
+          'floor', r.floor,
+          'status', r.status,
+          'roomType', json_build_object(
+            'id', rt.id,
+            'name', rt.name,
+            'slug', rt.slug,
+            'description', rt.description,
+            'basePrice', rt."basePrice",
+            'maxOccupancy', rt."maxOccupancy",
+            'bedType', rt."bedType",
+            'numberOfBeds', rt."numberOfBeds",
+            'roomSize', rt."roomSize",
+            'images', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', ri.id,
+                'url', ri.url,
+                'caption', ri.caption,
+                'order', ri."order"
+              ) ORDER BY ri."order")
+              FROM room_images ri
+              WHERE ri."roomTypeId" = rt.id
+            ), '[]'::json),
+            'amenities', COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', a.id,
+                'name', a.name,
+                'icon', a.icon,
+                'category', a.category
+              ))
+              FROM room_type_amenities rta
+              JOIN amenities a ON rta."amenityId" = a.id
+              WHERE rta."roomTypeId" = rt.id
+            ), '[]'::json)
+          ),
+          'branch', json_build_object(
+            'id', br.id,
+            'name', br.name,
+            'code', br.code,
+            'address', br.address,
+            'city', br.city
+          )
+        ) as room
+      FROM bookings b
+      LEFT JOIN users u ON b."userId" = u.id
+      LEFT JOIN rooms r ON b."roomId" = r.id
+      LEFT JOIN room_types rt ON r."roomTypeId" = rt.id
+      LEFT JOIN branches br ON r."branchId" = br.id
+      WHERE b.id = $1`,
+      [id]
+    )
 
     if (!booking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -110,9 +144,10 @@ export async function PUT(
     const body = await request.json()
     const { status, paymentStatus, specialRequests } = body
 
-    const existingBooking = await prisma.booking.findUnique({
-      where: { id },
-    })
+    const existingBooking = await queryOne(
+      'SELECT id, "userId" FROM bookings WHERE id = $1',
+      [id]
+    )
 
     if (!existingBooking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -128,7 +163,9 @@ export async function PUT(
       )
     }
 
-    const updateData: any = {}
+    const updateFields: string[] = []
+    const updateValues: any[] = []
+    let paramIndex = 1
 
     if (status) {
       if (decoded.role === 'GUEST' && status !== 'CANCELLED') {
@@ -137,37 +174,68 @@ export async function PUT(
           { status: 403 }
         )
       }
-      updateData.status = status
+      updateFields.push(`status = $${paramIndex++}`)
+      updateValues.push(status)
     }
 
     if (paymentStatus && (decoded.role === 'ADMIN' || decoded.role === 'STAFF')) {
-      updateData.paymentStatus = paymentStatus
+      updateFields.push(`"paymentStatus" = $${paramIndex++}`)
+      updateValues.push(paymentStatus)
     }
 
     if (specialRequests !== undefined) {
-      updateData.specialRequests = specialRequests
+      updateFields.push(`"specialRequests" = $${paramIndex++}`)
+      updateValues.push(specialRequests)
     }
 
-    const booking = await prisma.booking.update({
-      where: { id },
-      data: updateData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        room: {
-          include: {
-            roomType: true,
-            branch: true,
-          },
-        },
-      },
-    })
+    if (updateFields.length === 0) {
+      return NextResponse.json(
+        { error: 'No fields to update' },
+        { status: 400 }
+      )
+    }
+
+    updateValues.push(id)
+
+    await execute(
+      `UPDATE bookings 
+       SET ${updateFields.join(', ')}, "updatedAt" = NOW()
+       WHERE id = $${paramIndex}`,
+      updateValues
+    )
+
+    // Fetch updated booking with related data
+    const booking = await queryOne(
+      `SELECT 
+        b.*,
+        json_build_object(
+          'id', u.id,
+          'firstName', u."firstName",
+          'lastName', u."lastName",
+          'email', u.email
+        ) as user,
+        json_build_object(
+          'id', r.id,
+          'roomNumber', r."roomNumber",
+          'roomType', json_build_object(
+            'id', rt.id,
+            'name', rt.name,
+            'slug', rt.slug
+          ),
+          'branch', json_build_object(
+            'id', br.id,
+            'name', br.name,
+            'code', br.code
+          )
+        ) as room
+      FROM bookings b
+      LEFT JOIN users u ON b."userId" = u.id
+      LEFT JOIN rooms r ON b."roomId" = r.id
+      LEFT JOIN room_types rt ON r."roomTypeId" = rt.id
+      LEFT JOIN branches br ON r."branchId" = br.id
+      WHERE b.id = $1`,
+      [id]
+    )
 
     return NextResponse.json(
       {
@@ -209,9 +277,7 @@ export async function DELETE(
 
     const { id } = await params
 
-    await prisma.booking.delete({
-      where: { id },
-    })
+    await execute('DELETE FROM bookings WHERE id = $1', [id])
 
     return NextResponse.json(
       {

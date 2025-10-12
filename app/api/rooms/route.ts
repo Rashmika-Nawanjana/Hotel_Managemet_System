@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query } from '@/lib/db-queries'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,100 +14,93 @@ export async function GET(request: NextRequest) {
     const featured = searchParams.get('featured')
     const status = searchParams.get('status') || 'active'
 
-    // Build where clause
-    const where: any = {
-      status,
-    }
+    // Build WHERE clause dynamically
+    const conditions: string[] = ['rt.status = $1']
+    const values: any[] = [status]
+    let paramIndex = 2
 
     if (branchId) {
-      where.branchId = branchId
+      conditions.push(`rt."branchId" = $${paramIndex++}`)
+      values.push(branchId)
     }
 
-    if (minPrice || maxPrice) {
-      where.basePrice = {}
-      if (minPrice) where.basePrice.gte = parseFloat(minPrice)
-      if (maxPrice) where.basePrice.lte = parseFloat(maxPrice)
+    if (minPrice) {
+      conditions.push(`rt."basePrice" >= $${paramIndex++}`)
+      values.push(parseFloat(minPrice))
+    }
+
+    if (maxPrice) {
+      conditions.push(`rt."basePrice" <= $${paramIndex++}`)
+      values.push(parseFloat(maxPrice))
     }
 
     if (maxOccupancy) {
-      where.maxOccupancy = {
-        gte: parseInt(maxOccupancy),
-      }
+      conditions.push(`rt."maxOccupancy" >= $${paramIndex++}`)
+      values.push(parseInt(maxOccupancy))
     }
 
     if (bedType) {
-      where.bedType = {
-        contains: bedType,
-        mode: 'insensitive',
-      }
+      conditions.push(`rt."bedType" ILIKE $${paramIndex++}`)
+      values.push(`%${bedType}%`)
     }
 
     if (featured === 'true') {
-      where.isFeatured = true
+      conditions.push(`rt."isFeatured" = true`)
     }
 
-    // Fetch room types
-    const roomTypes = await prisma.roomType.findMany({
-      where,
-      include: {
-        branch: {
-          select: {
-            id: true,
-            name: true,
-            location: true,
-          },
-        },
-        images: {
-          orderBy: {
-            order: 'asc',
-          },
-        },
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        _count: {
-          select: {
-            rooms: true,
-          },
-        },
-      },
-      orderBy: [
-        { isFeatured: 'desc' },
-        { popularityScore: 'desc' },
-        { basePrice: 'asc' },
-      ],
-    })
+    const whereClause = conditions.join(' AND ')
 
-    // Transform data for better frontend consumption
-    const transformedRoomTypes = roomTypes.map((roomType) => ({
-      id: roomType.id,
-      name: roomType.name,
-      slug: roomType.slug,
-      description: roomType.description,
-      shortDescription: roomType.shortDescription,
-      basePrice: roomType.basePrice,
-      maxOccupancy: roomType.maxOccupancy,
-      bedType: roomType.bedType,
-      numberOfBeds: roomType.numberOfBeds,
-      roomSize: roomType.roomSize,
-      viewType: roomType.viewType,
-      isFeatured: roomType.isFeatured,
-      popularityScore: roomType.popularityScore,
-      branch: roomType.branch,
-      images: roomType.images,
-      amenities: roomType.amenities.map((ra) => ra.amenity),
-      availableRooms: roomType._count.rooms,
-      createdAt: roomType.createdAt,
-      updatedAt: roomType.updatedAt,
-    }))
+    // Fetch room types with all related data using JSON aggregation
+    const roomTypes = await query(
+      `SELECT 
+        rt.*,
+        json_build_object(
+          'id', b.id,
+          'name', b.name,
+          'location', b.location
+        ) as branch,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'url', ri.url,
+              'caption', ri.caption,
+              'order', ri."order"
+            ) ORDER BY ri."order" ASC
+          )
+          FROM room_images ri
+          WHERE ri."roomTypeId" = rt.id
+        ), '[]'::json) as images,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', a.id,
+              'name', a.name,
+              'icon', a.icon,
+              'category', a.category
+            )
+          )
+          FROM room_type_amenities rta
+          JOIN amenities a ON rta."amenityId" = a.id
+          WHERE rta."roomTypeId" = rt.id
+        ), '[]'::json) as amenities,
+        (
+          SELECT COUNT(*)::int
+          FROM rooms r
+          WHERE r."roomTypeId" = rt.id
+        ) as "availableRooms"
+      FROM room_types rt
+      LEFT JOIN branches b ON rt."branchId" = b.id
+      WHERE ${whereClause}
+      ORDER BY rt."isFeatured" DESC, rt."popularityScore" DESC, rt."basePrice" ASC`,
+      values
+    )
 
     return NextResponse.json(
       {
         success: true,
-        count: transformedRoomTypes.length,
-        data: transformedRoomTypes,
+        count: roomTypes.length,
+        data: roomTypes,
       },
       { status: 200 }
     )

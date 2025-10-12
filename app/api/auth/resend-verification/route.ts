@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { queryOne, transaction } from '@/lib/db-queries'
 import { generateVerificationToken } from '@/lib/auth'
 import { sendVerificationEmail } from '@/lib/email'
 
@@ -16,9 +16,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    })
+    const user = await queryOne(
+      'SELECT id, email, "firstName", "emailVerified" FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    )
 
     if (!user) {
       return NextResponse.json(
@@ -35,24 +36,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Delete old unused tokens for this user
-    await prisma.verificationToken.deleteMany({
-      where: {
-        userId: user.id,
-        used: false,
-      },
-    })
-
     // Generate new token
     const verificationToken = generateVerificationToken()
 
-    // Create new verification token
-    await prisma.verificationToken.create({
-      data: {
-        token: verificationToken,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-      },
+    // Delete old unused tokens and create new one in a transaction
+    await transaction(async (client) => {
+      // Delete old unused tokens for this user
+      await client.query(
+        'DELETE FROM verification_tokens WHERE "userId" = $1 AND used = false',
+        [user.id]
+      )
+
+      // Create new verification token
+      await client.query(
+        `INSERT INTO verification_tokens (token, "userId", "expiresAt", "createdAt")
+         VALUES ($1, $2, $3, NOW())`,
+        [verificationToken, user.id, new Date(Date.now() + 24 * 60 * 60 * 1000)]
+      )
     })
 
     // Send verification email
