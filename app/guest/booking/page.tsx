@@ -5,11 +5,10 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useBookingStore, Room } from '@/app/components/BookingContext';
 import { format } from 'date-fns';
-import { DayPicker } from 'react-day-picker';
-import 'react-day-picker/dist/style.css';
 import { Plus, Minus } from 'lucide-react';
 import Link from 'next/link';
 import GuestNavbar from '@/app/components/GuestNavbar';
+import { Calendar } from '@/components/ui/calendar'; // Import the shadcn Calendar
 
 // Mock data, easily replaceable with API calls
 const destinations = [
@@ -17,22 +16,37 @@ const destinations = [
     { id: 'kandy', name: 'Sky Nest Kandy', image: '/M2.jpg', category: 'KANDY HILLS' },
     { id: 'galle', name: 'Sky Nest Galle', image: 'https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?q=80&w=1974&auto=format&fit=crop', category: 'GALLE FORT' },
 ];
+const roomTypes = [
+    { value: 'deluxe', label: 'Deluxe Room' },
+    { value: 'suite', label: 'Suite' },
+    { value: 'presidential', label: 'Presidential Suite' }
+];
 
 const RoomGuestCounter: React.FC<{ room: Room; index: number }> = ({ room, index }) => {
     const { updateRoom, removeRoom } = useBookingStore();
-    const handleChange = (field: keyof Room, delta: number) => {
-        const newValue = room[field] + delta;
-        if (newValue >= 0 && (field !== 'adults' || newValue >= 1)) {
-            updateRoom(index, { [field]: newValue });
+    const handleChange = (field: keyof Room, delta: number | string) => {
+        if (typeof delta === 'number') {
+            const newValue = room[field as 'adults' | 'children' | 'infants'] + delta;
+            if (newValue >= 0 && (field !== 'adults' || newValue >= 1)) {
+                updateRoom(index, { [field]: newValue });
+            }
+        } else {
+            updateRoom(index, { [field]: delta });
         }
     };
     return (
-        <div className="border rounded-lg p-6 w-full bg-white/50">
+        <div className="border border-amber-200/50 rounded-lg p-6 w-full bg-white/50 backdrop-blur-sm">
             <div className="flex justify-between items-center mb-4">
                 <h4 className="font-semibold uppercase text-amber-800">Room {index + 1}</h4>
                 {index > 0 && <button onClick={() => removeRoom(index)} className="text-xs uppercase font-semibold text-gray-500 hover:text-red-500">Remove</button>}
             </div>
             <div className="space-y-4">
+                <div>
+                    <label className="text-xs text-gray-500 uppercase font-semibold">Room Type</label>
+                    <select value={room.roomType} onChange={(e) => handleChange('roomType', e.target.value)} className="w-full mt-1 p-2 border border-gray-300 rounded-md bg-transparent focus:ring-1 focus:ring-amber-500 focus:border-amber-500">
+                        {roomTypes.map(rt => <option key={rt.value} value={rt.value}>{rt.label}</option>)}
+                    </select>
+                </div>
                 {(['adults', 'children', 'infants'] as const).map(type => (
                     <div key={type} className="flex justify-between items-center">
                         <div>
@@ -66,7 +80,7 @@ export default function BookingPage() {
                         <div className="grid md:grid-cols-3 gap-8">
                             {destinations.map(dest => (
                                 <div key={dest.id} onClick={() => { setDestination(dest); setCurrentView('dates'); }} className="cursor-pointer group">
-                                    <div className="overflow-hidden rounded-lg mb-4">
+                                    <div className="overflow-hidden rounded-lg mb-4 shadow-md">
                                         <Image src={dest.image} alt={dest.name} width={400} height={500} className="w-full h-80 object-cover group-hover:scale-105 transition-transform duration-300"/>
                                     </div>
                                     <p className="text-xs text-gray-500 uppercase">{dest.category}</p>
@@ -80,32 +94,17 @@ export default function BookingPage() {
                 return (
                     <div className="p-8 flex flex-col items-center">
                         <h1 className="text-4xl font-l mb-8 text-gray-800">Stay Dates</h1>
-                        <DayPicker
-                            mode="range"
-                            numberOfMonths={2}
-                            selected={dates}
-                            onSelect={(range) => {
-                                setDates(range);
-                                if (range?.from && range?.to) setCurrentView('rooms');
-                            }}
-                            className="w-full"
-                            classNames={{ 
-                                root: 'p-4 border bg-white/50 rounded-lg w-full',
-                                months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
-                                month: 'space-y-4 w-full',
-                                caption_label: "text-lg font-medium",
-                                head_row: "flex w-full justify-between",
-                                head_cell: "text-gray-500 uppercase w-[14.28%] text-xs",
-                                row: "flex w-full mt-2 justify-between",
-                                cell: "text-center text-sm p-0 relative w-[14.28%]",
-                                day: "h-12 w-full p-0 font-normal hover:bg-amber-100 rounded-md",
-                                day_selected: 'bg-amber-500 text-black rounded-md', 
-                                day_today: 'text-amber-600 font-bold',
-                                day_range_middle: "bg-amber-100",
-                                day_range_start: "rounded-r-none",
-                                day_range_end: "rounded-l-none",
-                            }}
-                        />
+                        <div className="w-full p-4 border border-white/50 bg-white/50 rounded-lg backdrop-blur-sm">
+                            <Calendar
+                                mode="range"
+                                numberOfMonths={2}
+                                selected={dates}
+                                onSelect={(range) => {
+                                    setDates(range);
+                                    if (range?.from && range?.to) setCurrentView('rooms');
+                                }}
+                            />
+                        </div>
                     </div>
                 );
             case 'rooms':
@@ -124,7 +123,7 @@ export default function BookingPage() {
     };
     
     return (
-        <div className="min-h-screen bg-gradient-to-t from-amber-700/40 to-amber-50 text-gray-800">
+        <div className="min-h-screen bg-gradient-to-t from-amber-100/50 to-amber-50 text-gray-800">
             <GuestNavbar />
             <div className="fixed top-0 left-0 right-0 z-40 bg-white/60 backdrop-blur-lg shadow-md pt-[73px]">
                  <div className="flex items-center divide-x container mx-auto">
@@ -133,8 +132,12 @@ export default function BookingPage() {
                         <p className="font-semibold truncate text-gray-800">{destination?.name || 'Select Destination'}</p>
                     </button>
                     <button onClick={() => setCurrentView('dates')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
-                        <p className="text-xs uppercase font-semibold text-gray-500">Stay Dates</p>
-                        <p className="font-semibold text-gray-800">{dates?.from && dates?.to ? `${format(dates.from, 'd MMM')} - ${format(dates.to, 'd MMM, yyyy')}` : 'Select Dates'}</p>
+                        <p className="text-xs uppercase font-semibold text-gray-500">Check-in</p>
+                        <p className="font-semibold text-gray-800">{dates?.from ? format(dates.from, 'd MMM, yyyy') : 'Select Date'}</p>
+                    </button>
+                    <button onClick={() => setCurrentView('dates')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
+                        <p className="text-xs uppercase font-semibold text-gray-500">Check-out</p>
+                        <p className="font-semibold text-gray-800">{dates?.to ? format(dates.to, 'd MMM, yyyy') : 'Select Date'}</p>
                     </button>
                     <button onClick={() => setCurrentView('rooms')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
                         <p className="text-xs uppercase font-semibold text-gray-500">Rooms & Guests</p>

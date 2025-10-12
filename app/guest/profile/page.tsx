@@ -1,568 +1,141 @@
+// app/guest/profile/page.tsx
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
+import GuestNavbar from '@/app/components/GuestNavbar'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Briefcase, Calendar, Star, DollarSign, Edit } from 'lucide-react'
 
 export default function GuestProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('personal')
 
+  // Mock data, easily replaceable with API calls
   const [profileData, setProfileData] = useState({
     firstName: 'Rashmika',
     lastName: 'Nawanjana',
     email: 'rashmika@example.com',
     phone: '+94 77 123 4567',
-    dateOfBirth: '1995-05-15',
-    nationality: 'Sri Lankan',
-    idType: 'Passport',
-    idNumber: 'N1234567',
-    address: '123 Main Street',
-    city: 'Colombo',
-    country: 'Sri Lanka',
-    postalCode: '10100'
-  })
-
+  });
   const [preferences, setPreferences] = useState({
-    roomType: 'suite',
-    bedType: 'king',
-    smokingPreference: 'non-smoking',
-    floorPreference: 'high',
-    pillowType: 'soft',
     newsletter: true,
     smsNotifications: true,
-    emailNotifications: true
-  })
-
-  const [errors, setErrors] = useState<Record<string, string>>({})
-
-  const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      // TODO: Implement actual API call
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      setIsEditing(false)
-    } catch (err) {
-      setErrors({ general: 'Failed to save changes. Please try again.' })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleInputChange = (field: string, value: string) => {
-    setProfileData(prev => ({ ...prev, [field]: value }))
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }))
-    }
-  }
-
-  const handlePreferenceChange = (field: string, value: string | boolean) => {
-    setPreferences(prev => ({ ...prev, [field]: value }))
-  }
-
-  // Mock statistics
+  });
   const stats = {
     totalBookings: 12,
     totalNights: 45,
     totalSpent: 5420,
-    memberSince: '2023-06-15',
-    loyaltyPoints: 1250,
-    upcomingBookings: 2
-  }
+    loyaltyPoints: 1250
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsSaving(false);
+    setIsEditing(false);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/guest/dashboard" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">SN</span>
-              </div>
-              <div>
-                <span className="text-xl font-bold text-gray-800">Sky Nest</span>
-                <p className="text-xs text-gray-500 -mt-1">My Profile</p>
-              </div>
-            </Link>
-            
-            <div className="flex items-center space-x-4">
-              <Link href="/guest/my-bookings" className="text-gray-600 hover:text-blue-600 transition">
-                My Bookings
-              </Link>
-              <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-t from-amber-700/30 to-amber-50 text-gray-800">
+      <GuestNavbar />
+      <main className="max-w-5xl mx-auto px-6 py-10">
         {/* Profile Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 mb-8 text-white">
-          <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-8">
             <div className="flex items-center space-x-6">
-              <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-4xl font-bold">
-                {profileData.firstName[0]}{profileData.lastName[0]}
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold mb-2">{profileData.firstName} {profileData.lastName}</h1>
-                <p className="text-blue-100 mb-1">{profileData.email}</p>
-                <p className="text-blue-100">Member since {new Date(stats.memberSince).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-              </div>
+                <Avatar className="w-24 h-24">
+                    <AvatarFallback className="text-4xl bg-amber-100 text-amber-700 font-semibold">
+                        {profileData.firstName[0]}{profileData.lastName[0]}
+                    </AvatarFallback>
+                </Avatar>
+                <div>
+                    <h1 className="text-4xl font-bold text-gray-900 font-l">{profileData.firstName} {profileData.lastName}</h1>
+                    <p className="text-gray-600">{profileData.email}</p>
+                </div>
             </div>
             <div className="text-right">
-              <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-4">
-                <p className="text-blue-100 text-sm mb-1">Loyalty Points</p>
-                <p className="text-3xl font-bold">{stats.loyaltyPoints}</p>
-              </div>
+                <p className="text-sm text-gray-500">Loyalty Points</p>
+                <p className="text-3xl font-bold text-amber-600">{stats.loyaltyPoints}</p>
             </div>
-          </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">🏨</span>
-              <span className="text-sm text-gray-600">Total</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.totalBookings}</p>
-            <p className="text-sm text-gray-600">Bookings</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">🌙</span>
-              <span className="text-sm text-gray-600">Total</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.totalNights}</p>
-            <p className="text-sm text-gray-600">Nights Stayed</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">💰</span>
-              <span className="text-sm text-gray-600">Total</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">${stats.totalSpent}</p>
-            <p className="text-sm text-gray-600">Spent</p>
-          </div>
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">📅</span>
-              <span className="text-sm text-gray-600">Upcoming</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.upcomingBookings}</p>
-            <p className="text-sm text-gray-600">Bookings</p>
-          </div>
+        <div className="grid md:grid-cols-4 gap-5 mb-8">
+            <Card className="shadow-lg bg-white/60 backdrop-blur-xl border-white/20"><CardContent className="pt-6"><div className="flex items-center space-x-3"><Briefcase className="text-amber-600"/><div><p className="text-2xl font-bold">{stats.totalBookings}</p><p className="text-xs text-gray-500">Total Bookings</p></div></div></CardContent></Card>
+            <Card className="shadow-lg bg-white/60 backdrop-blur-xl border-white/20"><CardContent className="pt-6"><div className="flex items-center space-x-3"><Calendar className="text-amber-600"/><div><p className="text-2xl font-bold">{stats.totalNights}</p><p className="text-xs text-gray-500">Nights Stayed</p></div></div></CardContent></Card>
+            <Card className="shadow-lg bg-white/60 backdrop-blur-xl border-white/20"><CardContent className="pt-6"><div className="flex items-center space-x-3"><DollarSign className="text-amber-600"/><div><p className="text-2xl font-bold">${stats.totalSpent.toLocaleString()}</p><p className="text-xs text-gray-500">Total Spent</p></div></div></CardContent></Card>
+            <Card className="shadow-lg bg-white/60 backdrop-blur-xl border-white/20"><CardContent className="pt-6"><div className="flex items-center space-x-3"><Star className="text-amber-600"/><div><p className="text-2xl font-bold">Gold Tier</p><p className="text-xs text-gray-500">Loyalty Status</p></div></div></CardContent></Card>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-md mb-8">
-          <div className="border-b">
-            <div className="flex space-x-8 px-6">
-              <button
-                onClick={() => setActiveTab('personal')}
-                className={`py-4 font-medium border-b-2 transition ${
-                  activeTab === 'personal'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Personal Information
-              </button>
-              <button
-                onClick={() => setActiveTab('preferences')}
-                className={`py-4 font-medium border-b-2 transition ${
-                  activeTab === 'preferences'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Preferences
-              </button>
-              <button
-                onClick={() => setActiveTab('security')}
-                className={`py-4 font-medium border-b-2 transition ${
-                  activeTab === 'security'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Security
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {/* Personal Information Tab */}
-            {activeTab === 'personal' && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Personal Information</h2>
-                  {!isEditing ? (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-                    >
-                      Edit Profile
-                    </button>
-                  ) : (
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setIsEditing(false)}
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition font-medium"
-                      >
-                        {isSaving ? 'Saving...' : 'Save Changes'}
-                      </button>
-                    </div>
-                  )}
+        {/* Tabs for Profile Management */}
+        <Tabs defaultValue="personal" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-white/50 backdrop-blur-md rounded-lg p-1">
+            <TabsTrigger value="personal">Personal Information</TabsTrigger>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
+          </TabsList>
+          
+          <Card className="mt-4 shadow-lg bg-white/60 backdrop-blur-xl border-white/20 rounded-xl">
+            <TabsContent value="personal" className="mt-0">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                    <CardTitle>Personal Information</CardTitle>
+                    {!isEditing && <Button variant="outline" onClick={() => setIsEditing(true)}><Edit size={14} className="mr-2"/>Edit Profile</Button>}
                 </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">First Name</label>
-                    <input
-                      type="text"
-                      value={profileData.firstName}
-                      onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Last Name</label>
-                    <input
-                      type="text"
-                      value={profileData.lastName}
-                      onChange={(e) => handleInputChange('lastName', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                    <input
-                      type="email"
-                      value={profileData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Phone</label>
-                    <input
-                      type="tel"
-                      value={profileData.phone}
-                      onChange={(e) => handleInputChange('phone', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Date of Birth</label>
-                    <input
-                      type="date"
-                      value={profileData.dateOfBirth}
-                      onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Nationality</label>
-                    <input
-                      type="text"
-                      value={profileData.nationality}
-                      onChange={(e) => handleInputChange('nationality', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">ID Type</label>
-                    <select
-                      value={profileData.idType}
-                      onChange={(e) => handleInputChange('idType', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    >
-                      <option value="Passport">Passport</option>
-                      <option value="National ID">National ID</option>
-                      <option value="Driving License">Driving License</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">ID Number</label>
-                    <input
-                      type="text"
-                      value={profileData.idNumber}
-                      onChange={(e) => handleInputChange('idNumber', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Address</label>
-                    <input
-                      type="text"
-                      value={profileData.address}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                    <input
-                      type="text"
-                      value={profileData.city}
-                      onChange={(e) => handleInputChange('city', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Country</label>
-                    <input
-                      type="text"
-                      value={profileData.country}
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Postal Code</label>
-                    <input
-                      type="text"
-                      value={profileData.postalCode}
-                      onChange={(e) => handleInputChange('postalCode', e.target.value)}
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-600"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Preferences Tab */}
-            {activeTab === 'preferences' && (
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Stay Preferences</h2>
-
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Preferred Room Type</label>
-                    <select
-                      value={preferences.roomType}
-                      onChange={(e) => handlePreferenceChange('roomType', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="standard">Standard Room</option>
-                      <option value="deluxe">Deluxe Room</option>
-                      <option value="suite">Suite</option>
-                      <option value="presidential">Presidential Suite</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Bed Type</label>
-                    <select
-                      value={preferences.bedType}
-                      onChange={(e) => handlePreferenceChange('bedType', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="single">Single</option>
-                      <option value="double">Double</option>
-                      <option value="queen">Queen</option>
-                      <option value="king">King</option>
-                      <option value="twin">Twin</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Smoking Preference</label>
-                    <select
-                      value={preferences.smokingPreference}
-                      onChange={(e) => handlePreferenceChange('smokingPreference', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="non-smoking">Non-Smoking</option>
-                      <option value="smoking">Smoking</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Floor Preference</label>
-                    <select
-                      value={preferences.floorPreference}
-                      onChange={(e) => handlePreferenceChange('floorPreference', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="low">Low Floor</option>
-                      <option value="mid">Mid Floor</option>
-                      <option value="high">High Floor</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Pillow Type</label>
-                    <select
-                      value={preferences.pillowType}
-                      onChange={(e) => handlePreferenceChange('pillowType', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="soft">Soft</option>
-                      <option value="medium">Medium</option>
-                      <option value="firm">Firm</option>
-                    </select>
-                  </div>
-
-                  <div className="border-t pt-6">
-                    <h3 className="font-semibold text-gray-900 mb-4">Communication Preferences</h3>
-                    
-                    <div className="space-y-3">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={preferences.newsletter}
-                          onChange={(e) => handlePreferenceChange('newsletter', e.target.checked)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-3 text-gray-700">Subscribe to newsletter for exclusive offers</span>
-                      </label>
-
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={preferences.emailNotifications}
-                          onChange={(e) => handlePreferenceChange('emailNotifications', e.target.checked)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-3 text-gray-700">Email notifications for bookings and updates</span>
-                      </label>
-
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={preferences.smsNotifications}
-                          onChange={(e) => handlePreferenceChange('smsNotifications', e.target.checked)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-3 text-gray-700">SMS notifications for important updates</span>
-                      </label>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div><Label>First Name</Label><Input value={profileData.firstName} onChange={(e) => setProfileData(p => ({...p, firstName: e.target.value}))} disabled={!isEditing} /></div>
+                    <div><Label>Last Name</Label><Input value={profileData.lastName} onChange={(e) => setProfileData(p => ({...p, lastName: e.target.value}))} disabled={!isEditing} /></div>
+                    <div><Label>Email</Label><Input type="email" value={profileData.email} onChange={(e) => setProfileData(p => ({...p, email: e.target.value}))} disabled={!isEditing} /></div>
+                    <div><Label>Phone</Label><Input type="tel" value={profileData.phone} onChange={(e) => setProfileData(p => ({...p, phone: e.target.value}))} disabled={!isEditing} /></div>
+                 </div>
+                 {isEditing && (
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <Button variant="secondary" onClick={() => setIsEditing(false)}>Cancel</Button>
+                        <Button onClick={handleSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</Button>
                     </div>
-                  </div>
+                 )}
+              </CardContent>
+            </TabsContent>
 
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition font-medium"
-                  >
-                    {isSaving ? 'Saving Preferences...' : 'Save Preferences'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Security Tab */}
-            {activeTab === 'security' && (
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Security Settings</h2>
-
-                <div className="space-y-6">
-                  <div className="border border-gray-200 rounded-lg p-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-1">Password</h3>
-                        <p className="text-sm text-gray-600">Last changed 3 months ago</p>
-                      </div>
-                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
-                        Change Password
-                      </button>
+            <TabsContent value="preferences" className="mt-0">
+                <CardHeader><CardTitle>Stay Preferences</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div><Label>Preferred Room Type</Label><Select defaultValue="suite"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="suite">Suite</SelectItem></SelectContent></Select></div>
+                        <div><Label>Bed Type</Label><Select defaultValue="king"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="king">King</SelectItem></SelectContent></Select></div>
                     </div>
-                  </div>
-
-                  <div className="border border-gray-200 rounded-lg p-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-1">Two-Factor Authentication</h3>
-                        <p className="text-sm text-gray-600">Add an extra layer of security</p>
-                      </div>
-                      <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
-                        Enable
-                      </button>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between"><Label htmlFor="newsletter">Subscribe to newsletter</Label><Switch id="newsletter" checked={preferences.newsletter} onCheckedChange={(c) => setPreferences(p => ({...p, newsletter: c}))} /></div>
+                        <div className="flex items-center justify-between"><Label htmlFor="sms">SMS notifications for bookings</Label><Switch id="sms" checked={preferences.smsNotifications} onCheckedChange={(c) => setPreferences(p => ({...p, smsNotifications: c}))} /></div>
                     </div>
-                  </div>
+                </CardContent>
+            </TabsContent>
 
-                  <div className="border border-gray-200 rounded-lg p-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-1">Active Sessions</h3>
-                        <p className="text-sm text-gray-600">Manage your logged-in devices</p>
-                      </div>
-                      <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
-                        View Sessions
-                      </button>
+             <TabsContent value="security" className="mt-0">
+                <CardHeader><CardTitle>Security</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div><h4 className="font-semibold">Change Password</h4><p className="text-sm text-gray-500">Last changed 3 months ago</p></div>
+                        <Button>Change</Button>
                     </div>
-                  </div>
-
-                  <div className="border border-red-200 rounded-lg p-6 bg-red-50">
-                    <h3 className="font-semibold text-red-900 mb-3">Delete Account</h3>
-                    <p className="text-sm text-red-700 mb-4">
-                      Once you delete your account, there is no going back. Please be certain.
-                    </p>
-                    <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium">
-                      Delete My Account
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Links */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Link href="/guest/my-bookings" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-center">
-            <span className="text-4xl mb-3 block">📅</span>
-            <h4 className="font-semibold text-gray-900 mb-2">My Bookings</h4>
-            <p className="text-sm text-gray-600">View and manage your reservations</p>
-          </Link>
-
-          <Link href="/guest/services" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-center">
-            <span className="text-4xl mb-3 block">🛎️</span>
-            <h4 className="font-semibold text-gray-900 mb-2">Services</h4>
-            <p className="text-sm text-gray-600">Request hotel services</p>
-          </Link>
-
-          <Link href="/guest/help" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition text-center">
-            <span className="text-4xl mb-3 block">❓</span>
-            <h4 className="font-semibold text-gray-900 mb-2">Help Center</h4>
-            <p className="text-sm text-gray-600">Get support and answers</p>
-          </Link>
-        </div>
-      </div>
+                     <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div><h4 className="font-semibold">Two-Factor Authentication</h4><p className="text-sm text-gray-500">Keep your account extra secure.</p></div>
+                        <Button variant="destructive">Enable 2FA</Button>
+                    </div>
+                </CardContent>
+            </TabsContent>
+          </Card>
+        </Tabs>
+      </main>
     </div>
   )
 }

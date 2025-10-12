@@ -8,6 +8,7 @@ export interface Room {
   adults: number;
   children: number;
   infants: number;
+  roomType: string; // Added roomType
 }
 
 interface BookingState {
@@ -24,7 +25,7 @@ interface BookingState {
 export const useBookingStore = create<BookingState>((set) => ({
   destination: null,
   dates: undefined,
-  rooms: [{ adults: 2, children: 0, infants: 0 }], // Start with one default room
+  rooms: [{ adults: 2, children: 0, infants: 0, roomType: 'deluxe' }], // Default room
   setDestination: (destination) => set({ destination }),
   setDates: (dates) => set({ dates }),
   updateRoom: (index, newRoom) => set((state) => {
@@ -35,9 +36,10 @@ export const useBookingStore = create<BookingState>((set) => ({
     return { rooms };
   }),
   addRoom: () => set((state) => ({
-    rooms: [...state.rooms, { adults: 1, children: 0, infants: 0 }]
+    rooms: [...state.rooms, { adults: 1, children: 0, infants: 0, roomType: 'deluxe' }]
   })),
   removeRoom: (index) => set((state) => ({
     rooms: state.rooms.filter((_, i) => i !== index)
   })),
 }));
+

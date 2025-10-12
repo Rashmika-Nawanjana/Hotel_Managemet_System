@@ -63,7 +63,7 @@ export default function AdminSidebar({ isCollapsed, setIsCollapsed }: AdminSideb
                   : 'text-gray-400 hover:bg-white/5 hover:text-white'
                 }`}
             >
-                <div className={`absolute left-0 top-0 h-full w-1 bg-amber-400 rounded-r-full transition-opacity duration-300 ${isActive ? 'opacity-100 shadow-[0_0_15px_2px_#fbbf24]' : 'opacity-0'}`}></div>
+                <div className={`absolute left-0 top-0 h-full w-1 bg-amber-400 transition-opacity duration-300 ${isActive ? 'opacity-100 shadow-[0_0_10px_px_#fbbf24]' : 'opacity-0'}`}></div>
                 <item.icon size={22} className="flex-shrink-0 ml-2" />
                 <span className="nav-text font-l font-light whitespace-nowrap">{item.label}</span>
             </Link>
