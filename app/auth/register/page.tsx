@@ -1,428 +1,189 @@
+// app/auth/register/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import { Eye, EyeOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import LoadingScreen from '@/app/components/LoadingScreen'
+import gsap from 'gsap';
+
+// --- Data for the Carousel (Benefits of Registering) with updated images ---
+const carouselItems = [
+    { 
+        image: '/B1.avif', 
+        title: 'Unlock Exclusive Member Rates', 
+        description: 'Join today and get access to special discounts of up to 15% on your bookings.' 
+    },
+    { 
+        image: '/B2.avif', 
+        title: 'Enjoy a Faster Booking Experience', 
+        description: 'Save your details for quick, seamless reservations and enjoy priority check-in services.' 
+    },
+    { 
+        image: '/B3.avif', 
+        title: 'Access Premium Services', 
+        description: 'Get priority access to our spa, fine dining reservations, and other exclusive services.' 
+    }
+];
 
 export default function GuestRegisterPage() {
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    dateOfBirth: '',
-    nationality: '',
-    idNumber: '',
-    idType: 'passport'
-  })
-  
-  const [isLoading, setIsLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [agreeToTerms, setAgreeToTerms] = useState(false)
-  const [subscribeNewsletter, setSubscribeNewsletter] = useState(true)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  
-  const router = useRouter()
+    const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [agreeToTerms, setAgreeToTerms] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [currentSlide, setCurrentSlide] = useState(0);
+    const router = useRouter();
+    const titleRef = useRef(null);
+    const descriptionRef = useRef(null);
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
+    // Carousel Logic
+    useEffect(() => {
+        const timer = setInterval(() => {
+            gsap.to([titleRef.current, descriptionRef.current], { 
+                opacity: 0, y: 20, duration: 0.5, ease: 'power3.in',
+                onComplete: () => {
+                    setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
+                }
+            });
+        }, 5000);
+        return () => clearInterval(timer);
+    }, []);
 
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required'
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required'
-    if (!formData.email.trim()) newErrors.email = 'Email is required'
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Invalid email format'
-    
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required'
-    if (!formData.password) newErrors.password = 'Password is required'
-    else if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters'
-    
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match'
+    useEffect(() => {
+        gsap.fromTo([titleRef.current, descriptionRef.current], 
+            { opacity: 0, y: -20 }, 
+            { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
+        );
+    }, [currentSlide]);
+
+    const validateForm = () => {
+        const newErrors: Record<string, string> = {};
+        if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+        if (!formData.email.trim() || !/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'A valid email is required';
+        if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+        if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+        if (!agreeToTerms) newErrors.terms = 'You must agree to the terms';
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!validateForm()) return;
+        setIsLoading(true);
+        try {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            router.push('/auth/login?registered=true');
+        } catch (err) {
+            setErrors({ general: 'Registration failed. Please try again.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleInputChange = (field: string, value: string) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+        if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+    };
+
+    if (isLoading) {
+        return <LoadingScreen />;
     }
-    
-    if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required'
-    if (!formData.nationality.trim()) newErrors.nationality = 'Nationality is required'
-    if (!formData.idNumber.trim()) newErrors.idNumber = 'ID number is required'
-    if (!agreeToTerms) newErrors.terms = 'You must agree to the terms and conditions'
 
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validateForm()) return
-
-    setIsLoading(true)
-
-    try {
-      // TODO: Implement actual registration API call
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate API call
-      
-      // Simulate successful registration
-      router.push('/auth/login?registered=true')
-    } catch (err) {
-      setErrors({ general: 'Registration failed. Please try again.' })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }))
-    }
-  }
-
-  const idTypes = [
-    { value: 'passport', label: 'Passport' },
-    { value: 'national_id', label: 'National ID' },
-    { value: 'driving_license', label: 'Driving License' }
-  ]
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">SN</span>
-              </div>
-              <div>
-                <span className="text-2xl font-bold text-gray-800">Sky Nest</span>
-                <p className="text-xs text-gray-500 -mt-1">Hotel & Resort</p>
-              </div>
-            </Link>
-            
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-600">Already have an account?</span>
-              <Link 
-                href="/auth/login"
-                className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium"
-              >
-                Sign In
-              </Link>
+    return (
+        <div className="min-h-screen bg-[#10141c] text-gray-300 flex">
+            {/* Left Side - Carousel */}
+            <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+                {carouselItems.map((item, index) => (
+                    <div key={index} className={`absolute inset-0 transition-opacity duration-1000 ${index === currentSlide ? 'opacity-100' : 'opacity-0'}`}>
+                        <Image src={item.image} alt={item.title} fill className="object-cover"/>
+                        <div className="absolute inset-0 bg-black/60"></div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-amber-900/30 to-transparent"></div>
+                    </div>
+                ))}
+                <div className="relative z-10 flex flex-col justify-between p-10 text-white h-full w-full">
+                    <Link href="/" className="flex items-center space-x-3">
+                        <Image src="/SNC.png" alt="Sky Nest Logo" width={200} height={50} />
+                    </Link>
+                    <div className="mb-8">
+                        <h1 ref={titleRef} className="text-amber-400 text-4xl font-bold mb-4 leading-tight font-l">{carouselItems[currentSlide].title}</h1>
+                        <p ref={descriptionRef} className="text-xl text-white/80 font-l">{carouselItems[currentSlide].description}</p>
+                    </div>
+                </div>
             </div>
-          </div>
+            <div className="w-1 bg-gradient-to-b from-amber-400 to-amber-600"></div>
+
+            {/* Right Side - Registration Form */}
+            <div className="bg-[url('/LBG.jpg')] bg-cover bg-center bg-no-repeat w-full lg:w-1/2 flex items-center justify-center p-8">
+                <div className="w-full max-w-md">
+                    <Card className="bg-black/20 backdrop-blur-xs border border-white/10 text-gray-300">
+                        <CardHeader className="text-center">
+                            <CardTitle className="text-3xl font-bold text-white font-l">Create an Account</CardTitle>
+                            <CardDescription>Join us for exclusive benefits and personalized experiences.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {errors.general && <div className="mb-4 text-red-400 text-sm p-3 bg-red-500/10 rounded-md">{errors.general}</div>}
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="firstName" className="text-gray-400">First Name</Label>
+                                        <Input id="firstName" value={formData.firstName} onChange={(e) => handleInputChange('firstName', e.target.value)} />
+                                        {errors.firstName && <p className="text-xs text-red-400">{errors.firstName}</p>}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="lastName" className="text-gray-400">Last Name</Label>
+                                        <Input id="lastName" value={formData.lastName} onChange={(e) => handleInputChange('lastName', e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="email" className="text-gray-400">Email address</Label>
+                                    <Input id="email" type="email" value={formData.email} onChange={(e) => handleInputChange('email', e.target.value)} />
+                                    {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="password">Password</Label>
+                                    <div className="relative">
+                                        <Input id="password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => handleInputChange('password', e.target.value)} />
+                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><Eye size={16} /></button>
+                                    </div>
+                                    {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                                     <div className="relative">
+                                        <Input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword} onChange={(e) => handleInputChange('confirmPassword', e.target.value)} />
+                                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><Eye size={16} /></button>
+                                    </div>
+                                    {errors.confirmPassword && <p className="text-xs text-red-400">{errors.confirmPassword}</p>}
+                                </div>
+                                <div className="flex items-start space-x-2 pt-2">
+                                    <Checkbox id="terms" checked={agreeToTerms} onCheckedChange={(checked) => setAgreeToTerms(!!checked)} className="border-gray-600 data-[state=checked]:bg-amber-400 data-[state=checked]:text-black mt-1" />
+                                    <div className="grid gap-1.5 leading-none">
+                                        <label htmlFor="terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                            I agree to the <Link href="/terms" className="text-amber-400 hover:underline">Terms & Conditions</Link>
+                                        </label>
+                                        {errors.terms && <p className="text-xs text-red-400">{errors.terms}</p>}
+                                    </div>
+                                </div>
+                                <Button type="submit" className="w-full font-bold text-base" size="lg">Create Account</Button>
+                            </form>
+                        </CardContent>
+                        <CardFooter className="justify-center text-sm">
+                            <p>Already have an account? <Link href="/auth/login" className="font-semibold text-amber-400 hover:underline">Sign in</Link></p>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </div>
         </div>
-      </div>
+    );
+}
 
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create your Sky Nest account</h1>
-            <p className="text-gray-600">Join us for exclusive benefits and personalized experiences</p>
-          </div>
-
-          {/* Benefits */}
-          <div className="grid md:grid-cols-3 gap-4 mb-8 p-6 bg-blue-50 rounded-xl">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <span className="text-white text-xl">🎯</span>
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Member Rates</h3>
-              <p className="text-xs text-gray-600">Exclusive discounts up to 15%</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <span className="text-white text-xl">⚡</span>
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Fast Booking</h3>
-              <p className="text-xs text-gray-600">Quick reservations & check-in</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <span className="text-white text-xl">💎</span>
-              </div>
-              <h3 className="font-semibold text-gray-900 text-sm">Premium Services</h3>
-              <p className="text-xs text-gray-600">Priority spa & dining access</p>
-            </div>
-          </div>
-
-          {errors.general && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center">
-                <span className="text-red-500 mr-2">⚠️</span>
-                <span className="text-red-700 text-sm">{errors.general}</span>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Personal Information */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    First Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => handleInputChange('firstName', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.firstName ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your first name"
-                  />
-                  {errors.firstName && <p className="mt-1 text-sm text-red-600">{errors.firstName}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Last Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => handleInputChange('lastName', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.lastName ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your last name"
-                  />
-                  {errors.lastName && <p className="mt-1 text-sm text-red-600">{errors.lastName}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Date of Birth *
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                    max="2006-10-01"
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.dateOfBirth ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Nationality *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nationality}
-                    onChange={(e) => handleInputChange('nationality', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.nationality ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="e.g., Sri Lankan, American"
-                  />
-                  {errors.nationality && <p className="mt-1 text-sm text-red-600">{errors.nationality}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Contact Information */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.email ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your email"
-                  />
-                  {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.phone ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="+94 77 123 4567"
-                  />
-                  {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Identification */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Identification</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    ID Type *
-                  </label>
-                  <select
-                    value={formData.idType}
-                    onChange={(e) => handleInputChange('idType', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                  >
-                    {idTypes.map(type => (
-                      <option key={type.value} value={type.value}>{type.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    ID Number *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.idNumber}
-                    onChange={(e) => handleInputChange('idNumber', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition ${
-                      errors.idNumber ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your ID number"
-                  />
-                  {errors.idNumber && <p className="mt-1 text-sm text-red-600">{errors.idNumber}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Security</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Password *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={formData.password}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition pr-12 ${
-                        errors.password ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Create a strong password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      {showPassword ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                  {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
-                  <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Confirm Password *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={formData.confirmPassword}
-                      onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition pr-12 ${
-                        errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Confirm your password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      {showConfirmPassword ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                  {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Terms and Newsletter */}
-            <div className="space-y-4">
-              <div className="flex items-start">
-                <input
-                  id="terms"
-                  type="checkbox"
-                  checked={agreeToTerms}
-                  onChange={(e) => setAgreeToTerms(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5"
-                />
-                <label htmlFor="terms" className="ml-3 text-sm text-gray-700">
-                  I agree to the{' '}
-                  <Link href="/terms" className="text-blue-600 hover:text-blue-500 font-medium">
-                    Terms and Conditions
-                  </Link>{' '}
-                  and{' '}
-                  <Link href="/privacy" className="text-blue-600 hover:text-blue-500 font-medium">
-                    Privacy Policy
-                  </Link>
-                  *
-                </label>
-              </div>
-              {errors.terms && <p className="text-sm text-red-600">{errors.terms}</p>}
-
-              <div className="flex items-start">
-                <input
-                  id="newsletter"
-                  type="checkbox"
-                  checked={subscribeNewsletter}
-                  onChange={(e) => setSubscribeNewsletter(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5"
-                />
-                <label htmlFor="newsletter" className="ml-3 text-sm text-gray-700">
-                  Subscribe to our newsletter for exclusive offers and updates
-                </label>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 text-white py-4 px-6 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 font-semibold text-lg"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Creating your account...
-                </div>
-              ) : (
-                'Create Account'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-gray-600">
-              Already have an account?{' '}
-              <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
-                Sign in here
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}``

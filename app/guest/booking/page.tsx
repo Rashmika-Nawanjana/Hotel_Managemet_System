@@ -1,334 +1,172 @@
-'use client'
+// app/guest/booking/page.tsx
+"use client";
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useState } from 'react';
+import Image from 'next/image';
+import { useBookingStore, Room } from '@/app/components/BookingContext';
+import { format } from 'date-fns';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
+import { Plus, Minus } from 'lucide-react';
+import Link from 'next/link';
+import GuestNavbar from '@/app/components/GuestNavbar';
 
-export default function RoomDetailsPage() {
-  const params = useParams()
-  const roomId = params.id
+// Mock data, easily replaceable with API calls
+const destinations = [
+    { id: 'colombo', name: 'Sky Nest Colombo', image: '/M1.jpg', category: 'COLOMBO HOTELS' },
+    { id: 'kandy', name: 'Sky Nest Kandy', image: '/M2.jpg', category: 'KANDY HILLS' },
+    { id: 'galle', name: 'Sky Nest Galle', image: 'https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?q=80&w=1974&auto=format&fit=crop', category: 'GALLE FORT' },
+];
 
-  const [selectedImage, setSelectedImage] = useState(0)
-  const [checkIn, setCheckIn] = useState('')
-  const [checkOut, setCheckOut] = useState('')
-  const [guests, setGuests] = useState(2)
-
-  // Mock room data - in real app, fetch from API based on roomId
-  const room = {
-    id: roomId,
-    name: 'Deluxe Ocean View Suite',
-    branch: 'Sky Nest Galle',
-    branchLocation: 'Galle Fort, Southern Province',
-    price: 200,
-    originalPrice: 250,
-    rating: 4.8,
-    reviews: 127,
-    size: '55 sqm',
-    beds: 'King Size Bed',
-    capacity: 3,
-    images: [
-      'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800',
-      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800',
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800',
-      'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800'
-    ],
-    description: 'Experience luxury and comfort in our Deluxe Ocean View Suite. This spacious room features stunning views of the Indian Ocean, modern amenities, and elegant furnishings. Perfect for couples or small families seeking a memorable stay in historic Galle.',
-    amenities: [
-      { icon: '📶', name: 'Free High-Speed WiFi' },
-      { icon: '❄️', name: 'Air Conditioning' },
-      { icon: '📺', name: '55" Smart TV' },
-      { icon: '☕', name: 'Coffee/Tea Maker' },
-      { icon: '🛁', name: 'Luxury Bathroom' },
-      { icon: '🌊', name: 'Ocean View' },
-      { icon: '🪟', name: 'Private Balcony' },
-      { icon: '🔒', name: 'Electronic Safe' },
-      { icon: '👔', name: 'Iron & Board' },
-      { icon: '💆', name: 'Complimentary Toiletries' },
-      { icon: '🧊', name: 'Mini Bar' },
-      { icon: '📞', name: '24/7 Room Service' }
-    ],
-    features: [
-      'Daily housekeeping',
-      'Complimentary breakfast',
-      'Access to fitness center',
-      'Spa access',
-      'Free parking',
-      'Beach access',
-      'Concierge service',
-      'Laundry service available'
-    ],
-    cancellationPolicy: 'Free cancellation up to 5 days before check-in. Cancellations within 1-4 days incur a 1-night charge. No refund for same-day cancellations or no-shows.',
-    checkInTime: '2:00 PM',
-    checkOutTime: '12:00 PM',
-    available: 4
-  }
-
-  const calculateNights = () => {
-    if (!checkIn || !checkOut) return 0
-    const start = new Date(checkIn)
-    const end = new Date(checkOut)
-    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-    return diff > 0 ? diff : 0
-  }
-
-  const nights = calculateNights()
-  const totalPrice = nights * room.price
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/guest/search-rooms" className="flex items-center text-gray-600 hover:text-blue-600 transition">
-              <span className="mr-2">←</span>
-              <span>Back to Search</span>
-            </Link>
-            
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">SN</span>
-              </div>
-              <span className="text-xl font-bold text-gray-800">Sky Nest</span>
-            </Link>
-
-            <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              Dashboard
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Room Title */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{room.name}</h1>
-          <div className="flex items-center space-x-4 text-gray-600">
-            <span className="flex items-center">
-              <span className="text-yellow-500 mr-1">⭐</span>
-              {room.rating} ({room.reviews} reviews)
-            </span>
-            <span className="flex items-center">
-              <span className="mr-1">📍</span>
-              {room.branchLocation}
-            </span>
-          </div>
-        </div>
-
-        {/* Image Gallery */}
-        <div className="grid grid-cols-4 gap-2 mb-8 rounded-2xl overflow-hidden">
-          <div className="col-span-4 md:col-span-2 md:row-span-2">
-            <img 
-              src={room.images[selectedImage]} 
-              alt={room.name}
-              className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition"
-              onClick={() => setSelectedImage(0)}
-            />
-          </div>
-          {room.images.slice(1, 5).map((image, idx) => (
-            <div key={idx} className="col-span-2 md:col-span-1">
-              <img 
-                src={image} 
-                alt={`${room.name} ${idx + 2}`}
-                className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition"
-                onClick={() => setSelectedImage(idx + 1)}
-              />
+const RoomGuestCounter: React.FC<{ room: Room; index: number }> = ({ room, index }) => {
+    const { updateRoom, removeRoom } = useBookingStore();
+    const handleChange = (field: keyof Room, delta: number) => {
+        const newValue = room[field] + delta;
+        if (newValue >= 0 && (field !== 'adults' || newValue >= 1)) {
+            updateRoom(index, { [field]: newValue });
+        }
+    };
+    return (
+        <div className="border rounded-lg p-6 w-full bg-white/50">
+            <div className="flex justify-between items-center mb-4">
+                <h4 className="font-semibold uppercase text-amber-800">Room {index + 1}</h4>
+                {index > 0 && <button onClick={() => removeRoom(index)} className="text-xs uppercase font-semibold text-gray-500 hover:text-red-500">Remove</button>}
             </div>
-          ))}
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Room Info */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Room Details</h2>
-              <div className="grid md:grid-cols-3 gap-4 mb-6">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">📏</span>
-                  <div>
-                    <p className="text-sm text-gray-600">Room Size</p>
-                    <p className="font-semibold text-gray-900">{room.size}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">🛏️</span>
-                  <div>
-                    <p className="text-sm text-gray-600">Bed Type</p>
-                    <p className="font-semibold text-gray-900">{room.beds}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">👥</span>
-                  <div>
-                    <p className="text-sm text-gray-600">Capacity</p>
-                    <p className="font-semibold text-gray-900">Up to {room.capacity} guests</p>
-                  </div>
-                </div>
-              </div>
-              
-              <p className="text-gray-700 leading-relaxed">{room.description}</p>
-            </div>
-
-            {/* Amenities */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Amenities</h2>
-              <div className="grid md:grid-cols-3 gap-4">
-                {room.amenities.map((amenity, idx) => (
-                  <div key={idx} className="flex items-center space-x-3">
-                    <span className="text-xl">{amenity.icon}</span>
-                    <span className="text-gray-700">{amenity.name}</span>
-                  </div>
+            <div className="space-y-4">
+                {(['adults', 'children', 'infants'] as const).map(type => (
+                    <div key={type} className="flex justify-between items-center">
+                        <div>
+                            <p className="capitalize font-semibold text-gray-800">{type}</p>
+                            <p className="text-xs text-gray-500">{type === 'adults' ? '12+ years' : (type === 'children' ? '2-11 years' : 'Under 2')}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => handleChange(type, -1)} className="w-8 h-8 border rounded-full flex items-center justify-center hover:bg-gray-100"><Minus size={16}/></button>
+                            <span className="font-semibold w-4 text-center text-gray-800">{room[type]}</span>
+                            <button onClick={() => handleChange(type, 1)} className="w-8 h-8 border rounded-full flex items-center justify-center hover:bg-gray-100"><Plus size={16}/></button>
+                        </div>
+                    </div>
                 ))}
-              </div>
             </div>
-
-            {/* Features */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">What's Included</h2>
-              <ul className="grid md:grid-cols-2 gap-3">
-                {room.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-center space-x-2">
-                    <span className="text-green-600">✓</span>
-                    <span className="text-gray-700">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Check-in/out Times */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Check-in & Check-out</h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-2xl">🕐</span>
-                    <span className="font-semibold text-gray-900">Check-in</span>
-                  </div>
-                  <p className="text-gray-700">{room.checkInTime}</p>
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-2xl">🕛</span>
-                    <span className="font-semibold text-gray-900">Check-out</span>
-                  </div>
-                  <p className="text-gray-700">{room.checkOutTime}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Cancellation Policy */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Cancellation Policy</h2>
-              <div className="bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
-                <p className="text-gray-700">{room.cancellationPolicy}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Booking Card */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-xl p-6 sticky top-24">
-              <div className="mb-6">
-                <div className="flex items-baseline space-x-2 mb-1">
-                  <span className="text-3xl font-bold text-gray-900">${room.price}</span>
-                  <span className="text-gray-600">/ night</span>
-                </div>
-                {room.originalPrice > room.price && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-500 line-through">${room.originalPrice}</span>
-                    <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-semibold">
-                      Save ${room.originalPrice - room.price}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {room.available <= 5 && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-red-700 text-sm font-medium">
-                    ⚠️ Only {room.available} rooms left at this price!
-                  </p>
-                </div>
-              )}
-
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Check-in</label>
-                  <input
-                    type="date"
-                    value={checkIn}
-                    onChange={(e) => setCheckIn(e.target.value)}
-                    min="2025-10-02"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Check-out</label>
-                  <input
-                    type="date"
-                    value={checkOut}
-                    onChange={(e) => setCheckOut(e.target.value)}
-                    min={checkIn || "2025-10-02"}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Guests</label>
-                  <select
-                    value={guests}
-                    onChange={(e) => setGuests(Number(e.target.value))}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {[1, 2, 3].map(num => (
-                      <option key={num} value={num}>{num} guest{num > 1 ? 's' : ''}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {nights > 0 && (
-                  <div className="border-t border-gray-200 pt-4 space-y-2">
-                    <div className="flex justify-between text-gray-700">
-                      <span>${room.price} × {nights} night{nights > 1 ? 's' : ''}</span>
-                      <span>${totalPrice}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-700">
-                      <span>Service fee</span>
-                      <span>${Math.round(totalPrice * 0.1)}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-700">
-                      <span>Taxes</span>
-                      <span>${Math.round(totalPrice * 0.12)}</span>
-                    </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-lg">
-                      <span>Total</span>
-                      <span>${totalPrice + Math.round(totalPrice * 0.1) + Math.round(totalPrice * 0.12)}</span>
-                    </div>
-                  </div>
-                )}
-
-                <Link
-                  href={`/guest/booking?roomId=${room.id}&checkIn=${checkIn}&checkOut=${checkOut}&guests=${guests}`}
-                  className="block w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-semibold text-center"
-                >
-                  Reserve Now
-                </Link>
-
-                <p className="text-center text-sm text-gray-500">You won't be charged yet</p>
-              </form>
-
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
-                  <span>🔒</span>
-                  <span>Secure payment • Free cancellation</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
-      </div>
-    </div>
-  )
+    );
+};
+
+export default function BookingPage() {
+    const { destination, dates, rooms, setDestination, setDates, addRoom } = useBookingStore();
+    const [currentView, setCurrentView] = useState<'destinations' | 'dates' | 'rooms'>('destinations');
+
+    const totalGuests = rooms.reduce((acc: number, room: Room) => acc + room.adults + room.children, 0);
+
+    const renderView = () => {
+        switch (currentView) {
+            case 'destinations':
+                return (
+                     <div className="p-8">
+                        <h1 className="text-4xl font-l text-center mb-12 text-gray-800">Destinations</h1>
+                        <div className="grid md:grid-cols-3 gap-8">
+                            {destinations.map(dest => (
+                                <div key={dest.id} onClick={() => { setDestination(dest); setCurrentView('dates'); }} className="cursor-pointer group">
+                                    <div className="overflow-hidden rounded-lg mb-4">
+                                        <Image src={dest.image} alt={dest.name} width={400} height={500} className="w-full h-80 object-cover group-hover:scale-105 transition-transform duration-300"/>
+                                    </div>
+                                    <p className="text-xs text-gray-500 uppercase">{dest.category}</p>
+                                    <h3 className="font-semibold text-gray-800">{dest.name}</h3>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            case 'dates':
+                return (
+                    <div className="p-8 flex flex-col items-center">
+                        <h1 className="text-4xl font-l mb-8 text-gray-800">Stay Dates</h1>
+                        <DayPicker
+                            mode="range"
+                            numberOfMonths={2}
+                            selected={dates}
+                            onSelect={(range) => {
+                                setDates(range);
+                                if (range?.from && range?.to) setCurrentView('rooms');
+                            }}
+                            className="w-full"
+                            classNames={{ 
+                                root: 'p-4 border bg-white/50 rounded-lg w-full',
+                                months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0',
+                                month: 'space-y-4 w-full',
+                                caption_label: "text-lg font-medium",
+                                head_row: "flex w-full justify-between",
+                                head_cell: "text-gray-500 uppercase w-[14.28%] text-xs",
+                                row: "flex w-full mt-2 justify-between",
+                                cell: "text-center text-sm p-0 relative w-[14.28%]",
+                                day: "h-12 w-full p-0 font-normal hover:bg-amber-100 rounded-md",
+                                day_selected: 'bg-amber-500 text-black rounded-md', 
+                                day_today: 'text-amber-600 font-bold',
+                                day_range_middle: "bg-amber-100",
+                                day_range_start: "rounded-r-none",
+                                day_range_end: "rounded-l-none",
+                            }}
+                        />
+                    </div>
+                );
+            case 'rooms':
+                 return (
+                    <div className="p-8">
+                        <h1 className="text-4xl font-l text-center mb-12 text-gray-800">Rooms & Guests</h1>
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                            {rooms.map((room, index) => <RoomGuestCounter key={index} room={room} index={index} />)}
+                        </div>
+                        <button onClick={addRoom} className="text-sm font-semibold border-b border-gray-800 text-gray-800">
+                            + Add another room
+                        </button>
+                    </div>
+                );
+        }
+    };
+    
+    return (
+        <div className="min-h-screen bg-gradient-to-t from-amber-700/40 to-amber-50 text-gray-800">
+            <GuestNavbar />
+            <div className="fixed top-0 left-0 right-0 z-40 bg-white/60 backdrop-blur-lg shadow-md pt-[73px]">
+                 <div className="flex items-center divide-x container mx-auto">
+                    <button onClick={() => setCurrentView('destinations')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
+                        <p className="text-xs uppercase font-semibold text-gray-500">Destination</p>
+                        <p className="font-semibold truncate text-gray-800">{destination?.name || 'Select Destination'}</p>
+                    </button>
+                    <button onClick={() => setCurrentView('dates')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
+                        <p className="text-xs uppercase font-semibold text-gray-500">Stay Dates</p>
+                        <p className="font-semibold text-gray-800">{dates?.from && dates?.to ? `${format(dates.from, 'd MMM')} - ${format(dates.to, 'd MMM, yyyy')}` : 'Select Dates'}</p>
+                    </button>
+                    <button onClick={() => setCurrentView('rooms')} className="flex-1 px-4 py-3 hover:bg-gray-50/50 text-left">
+                        <p className="text-xs uppercase font-semibold text-gray-500">Rooms & Guests</p>
+                        <p className="font-semibold text-gray-800">{rooms.length} Room, {totalGuests} Guest{totalGuests > 1 ? 's' : ''}</p>
+                    </button>
+                    <div className="flex-initial pl-4">
+                        <Link href="/guest/search-rooms">
+                            <button className="bg-amber-500 text-black font-semibold px-8 py-4 rounded-md hover:bg-amber-600 transition-colors h-full">
+                                Search Rooms
+                            </button>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
+            <main className="pt-[154px]">
+                <div className="flex">
+                    <div className="w-2/3">
+                        {renderView()}
+                    </div>
+                    <div className="w-1/3 p-8 border-l border-white/50">
+                         <div className="sticky top-[154px]">
+                            <Image src="/M1.jpg" alt="Hotel View" width={600} height={800} className="rounded-lg object-cover h-[70vh] w-full"/>
+                             <div className="mt-4">
+                                <h3 className="font-bold text-lg text-gray-900">Experience Sky Nest</h3>
+                                <p className="text-gray-600 mt-2 font-l">Sky Nest is more than a destination—it's a bold new heartbeat for luxury travel. Discover a world where every moment is designed to inspire, surprise, and delight.</p>
+                            </div>
+                         </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    );
 }
+
