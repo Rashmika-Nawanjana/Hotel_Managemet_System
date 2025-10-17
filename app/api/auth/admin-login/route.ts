@@ -35,12 +35,24 @@ export async function POST(request: NextRequest) {
           u.id,
           u.email,
           u.password,
-          u."firstName",
-          u."lastName",
-          u.phone,
           u.role,
           u.status,
-          u."emailVerified"
+          u.emailverified,
+          u.firstname,
+          u.lastname,
+          u.phone,
+          u.dateofbirth,
+          u.nationality,
+          u.idtype,
+          u.idnumber,
+          u.address,
+          u.city,
+          u.postalcode,
+          u.twofactorenabled,
+          u.twofactorsecret,
+          u.createdat,
+          u.updatedat,
+          u.lastloginat
         FROM users u
         WHERE u.email = $1 AND u.role = 'ADMIN'`,
         [email.toLowerCase()]
@@ -69,7 +81,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if email is verified
-      if (!user.emailVerified) {
+      if (!user.emailverified) {
         console.log('⚠️ Email not verified')
         return NextResponse.json(
           { 
@@ -106,13 +118,13 @@ export async function POST(request: NextRequest) {
       await transaction(async (client) => {
         // Delete old unused 2FA codes for this user
         await client.query(
-          'DELETE FROM verification_tokens WHERE "userId" = $1 AND used = false',
+          'DELETE FROM "VerificationToken" WHERE "userId" = $1 AND used = false',
           [user.id]
         )
 
         // Create new 2FA code token
         await client.query(
-          `INSERT INTO verification_tokens (id, token, "userId", "expiresAt", used, "createdAt")
+          `INSERT INTO "VerificationToken" (id, token, "userId", "expiresAt", used, "createdAt")
            VALUES ($1, $2, $3, $4, false, NOW())`,
           [tokenId, code, user.id, expiresAt]
         )
@@ -125,8 +137,8 @@ export async function POST(request: NextRequest) {
         await sendEmail({
           to: user.email,
           subject: `Your Sky Nest Admin Login Code: ${code}`,
-          html: get2FACodeHTML(user.firstName, code),
-          text: get2FACodeText(user.firstName, code),
+          html: get2FACodeHTML(user.firstname, code),
+          text: get2FACodeText(user.firstname, code),
         })
         console.log('✅ 2FA code sent successfully via email')
       } catch (emailError) {
@@ -165,11 +177,11 @@ export async function POST(request: NextRequest) {
 
       // Find valid 2FA token
       const tokenData = await queryOne<any>(
-        `SELECT id, token, "userId", "expiresAt", used 
-         FROM verification_tokens 
-         WHERE "userId" = $1 AND token = $2 AND used = false
-         ORDER BY "createdAt" DESC
-         LIMIT 1`,
+  `SELECT id, token, "userId", "expiresAt", used 
+   FROM "VerificationToken" 
+   WHERE "userId" = $1 AND token = $2 AND used = false
+   ORDER BY "createdAt" DESC
+   LIMIT 1`,
         [userId, twoFactorCode.trim()]
       )
 
@@ -186,7 +198,7 @@ export async function POST(request: NextRequest) {
         console.log('⏰ 2FA code expired')
         // Mark as used/expired
         await execute(
-          'UPDATE verification_tokens SET used = true WHERE id = $1',
+          'UPDATE "VerificationToken" SET used = true WHERE id = $1',
           [tokenData.id]
         )
         return NextResponse.json(
@@ -199,7 +211,7 @@ export async function POST(request: NextRequest) {
 
       // Mark token as used
       await execute(
-        'UPDATE verification_tokens SET used = true WHERE id = $1',
+        'UPDATE "VerificationToken" SET used = true WHERE id = $1',
         [tokenData.id]
       )
 
@@ -208,12 +220,24 @@ export async function POST(request: NextRequest) {
         `SELECT 
           u.id,
           u.email,
-          u."firstName",
-          u."lastName",
-          u.phone,
           u.role,
           u.status,
-          u."emailVerified"
+          u.emailverified,
+          u.firstname,
+          u.lastname,
+          u.phone,
+          u.dateofbirth,
+          u.nationality,
+          u.idtype,
+          u.idnumber,
+          u.address,
+          u.city,
+          u.postalcode,
+          u.twofactorenabled,
+          u.twofactorsecret,
+          u.createdat,
+          u.updatedat,
+          u.lastloginat
         FROM users u
         WHERE u.id = $1`,
         [userId]
@@ -237,18 +261,31 @@ export async function POST(request: NextRequest) {
           sp."hireDate",
           sp."employeeId",
           sp."branchId",
-          b.id as "branch_id",
-          b.name as "branch_name",
-          b.location as "branch_location"
-        FROM staff_profiles sp
-        LEFT JOIN branches b ON sp."branchId" = b.id
+          sp.salary,
+          sp.rating,
+          sp."totalServices",
+          sp."createdAt",
+          sp."updatedAt",
+          b.id as branch_id,
+          b.name as branch_name,
+          b.location as branch_location,
+          b.slug as branch_slug,
+          b.address as branch_address,
+          b.phone as branch_phone,
+          b.email as branch_email,
+          b."totalRooms" as branch_totalrooms,
+          b.status as branch_status,
+          b."createdAt" as branch_createdat,
+          b."updatedAt" as branch_updatedat
+        FROM "StaffProfile" sp
+        LEFT JOIN "Branch" b ON sp."branchId" = b.id
         WHERE sp."userId" = $1`,
         [userId]
       )
 
       // Update last login time
       await execute(
-        'UPDATE users SET "lastLoginAt" = NOW() WHERE id = $1',
+        'UPDATE users SET lastloginat = NOW() WHERE id = $1',
         [user.id]
       )
 
@@ -289,10 +326,10 @@ export async function POST(request: NextRequest) {
         path: '/',
       })
 
-      console.log('✅ Admin login successful:', user.email)
-      console.log('🎉 User authenticated with 2FA')
+  console.log('✅ Admin login successful:', user.email)
+  console.log('🎉 User authenticated with 2FA')
 
-      return response
+  return response
     }
 
     return NextResponse.json(

@@ -28,12 +28,12 @@ export async function GET(request: NextRequest) {
       SELECT 
         id,
         email,
-        "firstName",
-        "lastName",
+        firstname,
+        lastname,
         phone,
         role,
         status,
-        "emailVerified"
+        emailverified
       FROM users
       WHERE id = $1
     `, [decoded.userId])

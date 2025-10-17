@@ -17,29 +17,29 @@ export async function POST(request: NextRequest) {
     console.log('Login attempt for email:', email)
 
     // Get user
-    const user = await queryOne<any>(`
-      SELECT 
-        id,
-        email,
-        password,
-        "firstName",
-        "lastName",
-        phone,
-        "dateOfBirth",
-        nationality,
-        "idType",
-        "idNumber",
-        address,
-        city,
-        "postalCode",
-        role,
-        status,
-        "emailVerified",
-        "twoFactorEnabled",
-        "lastLoginAt"
-      FROM users
-      WHERE email = $1
-    `, [email.toLowerCase()])
+      const user = await queryOne<any>(`
+        SELECT 
+          id,
+          email,
+          password,
+          firstname,
+          lastname,
+          phone,
+          dateofbirth,
+          nationality,
+          idtype,
+          idnumber,
+          address,
+          city,
+          postalcode,
+          role,
+          status,
+          emailverified,
+          twofactorenabled,
+          lastloginat
+        FROM users
+        WHERE email = $1
+      `, [email.toLowerCase()])
 
     if (!user) {
       return NextResponse.json(
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ Check if email is verified
-    if (!user.emailVerified) {
+    if (!user.emailverified) {
       return NextResponse.json(
         { 
           error: 'Email not verified',
@@ -81,56 +81,56 @@ export async function POST(request: NextRequest) {
     // Get profile based on role
     let profile = null
     if (user.role === 'GUEST') {
-      profile = await queryOne<any>(`
-        SELECT 
-          id,
-          "userId",
-          "loyaltyPoints",
-          "memberSince",
-          "totalBookings",
-          "totalSpent",
-          "preferredRoomType",
-          "preferredBedType",
-          "smokingPreference",
-          "floorPreference",
-          "pillowType",
-          newsletter,
-          "emailNotifications",
-          "smsNotifications"
-        FROM guest_profiles
-        WHERE "userId" = $1
-      `, [user.id])
+          profile = await queryOne<any>(`
+            SELECT 
+              id,
+              "userId ",
+              "loyaltyPoints",
+              "memberSince",
+              "totalBookings",
+              "totalSpent",
+              "preferredRoomType",
+              "preferredBedType",
+              "smokingPreference",
+              "floorPreference",
+              "pillowType",
+              newsletter,
+              "emailNotifications",
+              "smsNotifications"
+            FROM "GuestProfile"
+            WHERE "userId " = $1
+          `, [user.id])
     } else if (user.role === 'STAFF' || user.role === 'ADMIN') {
-      profile = await queryOne<any>(`
-        SELECT 
-          id,
-          "userId",
-          "employeeId",
-          "branchId",
-          department,
-          position,
-          salary,
-          "hireDate",
-          rating,
-          "totalServices"
-        FROM staff_profiles
-        WHERE "userId" = $1
-      `, [user.id])
+          profile = await queryOne<any>(`
+            SELECT 
+              id,
+              userid,
+              employeeid,
+              branchid,
+              department,
+              position,
+              salary,
+              hiredate,
+              rating,
+              totalservices
+            FROM staff_profiles
+            WHERE userid = $1
+          `, [user.id])
     }
 
     // Update last login time
-    await execute(`
-      UPDATE users 
-      SET "lastLoginAt" = NOW() 
-      WHERE id = $1
-    `, [user.id])
+        await execute(`
+          UPDATE users 
+          SET lastloginat = NOW() 
+          WHERE id = $1
+        `, [user.id])
 
     // Generate JWT token
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    })
+      const token = generateToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      })
 
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user

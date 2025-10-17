@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Find user
     const user = await queryOne(
-      'SELECT id, email, "firstName", "emailVerified" FROM users WHERE email = $1',
+      'SELECT id, email, firstname, emailverified FROM users WHERE email = $1',
       [email.toLowerCase()]
     )
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already verified
-    if (user.emailVerified) {
+    if (user.emailverified) {
       return NextResponse.json(
         { error: 'Email is already verified' },
         { status: 400 }
@@ -43,20 +43,29 @@ export async function POST(request: NextRequest) {
     await transaction(async (client) => {
       // Delete old unused tokens for this user
       await client.query(
-        'DELETE FROM verification_tokens WHERE "userId" = $1 AND used = false',
+        'DELETE FROM verification_tokens WHERE userid = $1 AND used = false',
         [user.id]
       )
 
       // Create new verification token
       await client.query(
-        `INSERT INTO verification_tokens (token, "userId", "expiresAt", "createdAt")
-         VALUES ($1, $2, $3, NOW())`,
+        `INSERT INTO verification_tokens (token, userid, expiresat, createdat, used)
+         VALUES ($1, $2, $3, NOW(), false)`,
         [verificationToken, user.id, new Date(Date.now() + 24 * 60 * 60 * 1000)]
       )
     })
 
     // Send verification email
-    await sendVerificationEmail(user.email, user.firstName, verificationToken)
+    // Compose verification link
+    const verificationLink = `${process.env.APP_URL || 'http://localhost:3000'}/auth/verify-email?token=${verificationToken}`;
+    // Send verification email
+    const { sendEmail, getEmailVerificationHTML, getEmailVerificationText } = await import('@/lib/email');
+    await sendEmail({
+      to: user.email,
+      subject: 'Verify your email address',
+      html: getEmailVerificationHTML(user.firstname, verificationLink),
+      text: getEmailVerificationText(user.firstname, verificationLink)
+    });
 
     return NextResponse.json(
       {

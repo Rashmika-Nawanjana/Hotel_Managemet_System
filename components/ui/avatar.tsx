@@ -36,17 +36,20 @@ function AvatarImage({
 
 function AvatarFallback({
   className,
+  initials,
   ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
+}: React.ComponentProps<typeof AvatarPrimitive.Fallback> & { initials?: string }) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
-        "bg-muted flex size-full items-center justify-center rounded-full",
+        "bg-[#FFA500] flex size-full items-center justify-center rounded-full text-white font-bold text-base select-none",
         className
       )}
       {...props}
-    />
+    >
+      {initials}
+    </AvatarPrimitive.Fallback>
   )
 }
 

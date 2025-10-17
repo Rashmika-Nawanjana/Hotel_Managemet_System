@@ -15,6 +15,15 @@ export default function StaffDashboardPage() {
     shift: "Morning Shift (6:00 AM - 2:00 PM)",
   };
 
+  // Get initials from staff name
+  const getInitials = (name: string) => {
+    if (!name) return "";
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+  const staffInitials = getInitials(staffMember.name);
+
   const handleLogout = async () => {
     try {
       // Call logout API to clear HTTP-only cookie
@@ -198,8 +207,8 @@ export default function StaffDashboardPage() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">SN</span>
+              <div className="w-10 h-10 bg-[#FFA500] rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-xl">{staffInitials}</span>
               </div>
               <div>
                 <span className="text-xl font-bold text-gray-800">
