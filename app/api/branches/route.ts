@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const branches = await query(
       `SELECT id, name, slug, location, address, phone, email, status
-       FROM branches
+       FROM "Branch"
        WHERE status = 'operational'
        ORDER BY name ASC`
     )

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query, queryOne, execute } from '@/lib/db-queries'
 import { verifyToken } from '@/lib/auth'
 
 // Helper function to generate slug from name
@@ -26,36 +26,51 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get all room types (including inactive)
-    const roomTypes = await prisma.roomType.findMany({
-      include: {
-        branch: {
-          select: {
-            id: true,
-            name: true,
-            location: true,
-          },
-        },
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        images: {
-          orderBy: {
-            order: 'asc',
-          },
-        },
-        _count: {
-          select: {
-            rooms: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+    // Get all room types (including inactive) with related data
+    const roomTypes = await query(`
+      SELECT 
+        rt.*,
+        json_build_object(
+          'id', b.id,
+          'name', b.name,
+          'location', b.location
+        ) as branch,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'url', ri.url,
+              'caption', ri.caption,
+              'altText', ri."altText",
+              'isPrimary', ri."isPrimary",
+              'order', ri."order"
+            ) ORDER BY ri."order" ASC
+          )
+          FROM "RoomImage" ri
+          WHERE ri."roomTypeId" = rt.id
+        ), '[]'::json) as images,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', a.id,
+              'name', a.name,
+              'icon', a.icon,
+              'category', a.category
+            )
+          )
+          FROM "RoomTypeAmenity" rta
+          JOIN "Amenities" a ON rta."amenityId" = a.id
+          WHERE rta."roomTypeId" = rt.id
+        ), '[]'::json) as amenities,
+        (
+          SELECT COUNT(*)::int
+          FROM "Room" r
+          WHERE r."roomTypeId" = rt.id
+        ) as "availableRooms"
+      FROM "RoomType" rt
+      LEFT JOIN "Branch" b ON rt."branchId" = b.id
+      ORDER BY rt."createdAt" DESC
+    `)
 
     console.log('📊 Fetched room types:', roomTypes.length)
 
@@ -80,8 +95,8 @@ export async function GET(request: NextRequest) {
         status: roomType.status,
         branch: roomType.branch,
         images: roomType.images || [],
-        amenities: roomType.amenities.map((ra) => ra.amenity),
-        availableRooms: roomType._count.rooms,
+        amenities: roomType.amenities || [],
+        availableRooms: roomType.availableRooms,
         createdAt: roomType.createdAt,
         updatedAt: roomType.updatedAt,
       }
@@ -150,9 +165,10 @@ export async function POST(request: NextRequest) {
     const slug = generateSlug(name)
 
     // Check if slug already exists
-    const existingRoomType = await prisma.roomType.findUnique({
-      where: { slug },
-    })
+    const existingRoomType = await queryOne(
+      'SELECT id FROM "RoomType" WHERE slug = $1',
+      [slug]
+    )
 
     if (existingRoomType) {
       return NextResponse.json(
@@ -164,55 +180,100 @@ export async function POST(request: NextRequest) {
     console.log('🆕 Creating room type:', name)
     console.log('📸 Images to save:', images?.length || 0)
 
-    // Create room type with amenities and images
-    const roomType = await prisma.roomType.create({
-      data: {
-        name,
-        slug,
-        description,
-        shortDescription,
-        basePrice: parseFloat(basePrice),
-        maxOccupancy: parseInt(maxOccupancy),
-        bedType,
-        numberOfBeds: parseInt(numberOfBeds) || 1,
-        roomSize: parseInt(roomSize),
-        viewType,
-        branchId,
-        isFeatured: isFeatured || false,
-        status: 'active',
-        amenities: amenityIds && amenityIds.length > 0
-          ? {
-              createMany: {
-                data: amenityIds.map((amenityId: string) => ({
-                  amenityId,
-                })),
-              },
-            }
-          : undefined,
-        images: images && images.length > 0
-          ? {
-              createMany: {
-                data: images.map((image: any, index: number) => ({
-                  url: image.url,
-                  caption: image.caption || null,
-                  altText: image.altText || null,
-                  isPrimary: index === 0,
-                  order: index + 1,
-                })),
-              },
-            }
-          : undefined,
-      },
-      include: {
-        branch: true,
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        images: true,
-      },
-    })
+    // Create room type
+    const roomTypeResult = await execute(`
+      INSERT INTO "RoomType" (
+        id, name, slug, description, "shortDescription", "basePrice", 
+        "maxOccupancy", "bedType", "numberOfBeds", "roomSize", "viewType", 
+        "branchId", "isFeatured", status, "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active', NOW(), NOW()
+      ) RETURNING id
+    `, [
+      name,
+      slug,
+      description,
+      shortDescription,
+      parseFloat(basePrice),
+      parseInt(maxOccupancy),
+      bedType,
+      parseInt(numberOfBeds) || 1,
+      parseInt(roomSize),
+      viewType,
+      branchId,
+      isFeatured || false
+    ])
+
+    const roomTypeId = roomTypeResult[0].id
+
+    // Add amenities if provided
+    if (amenityIds && amenityIds.length > 0) {
+      for (const amenityId of amenityIds) {
+        await execute(`
+          INSERT INTO "RoomTypeAmenity" (id, "roomTypeId", "amenityId", "createdAt")
+          VALUES (gen_random_uuid(), $1, $2, NOW())
+        `, [roomTypeId, amenityId])
+      }
+    }
+
+    // Add images if provided
+    if (images && images.length > 0) {
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i]
+        await execute(`
+          INSERT INTO "RoomImage" (id, url, caption, "altText", "isPrimary", "order", "roomTypeId", "createdAt")
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())
+        `, [
+          image.url,
+          image.caption || null,
+          image.altText || null,
+          i === 0, // First image is primary
+          i + 1, // Order starts from 1
+          roomTypeId
+        ])
+      }
+    }
+
+    // Fetch the created room type with all related data
+    const roomType = await queryOne(`
+      SELECT 
+        rt.*,
+        json_build_object(
+          'id', b.id,
+          'name', b.name,
+          'location', b.location
+        ) as branch,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'url', ri.url,
+              'caption', ri.caption,
+              'altText', ri."altText",
+              'isPrimary', ri."isPrimary",
+              'order', ri."order"
+            ) ORDER BY ri."order" ASC
+          )
+          FROM "RoomImage" ri
+          WHERE ri."roomTypeId" = rt.id
+        ), '[]'::json) as images,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'id', a.id,
+              'name', a.name,
+              'icon', a.icon,
+              'category', a.category
+            )
+          )
+          FROM "RoomTypeAmenity" rta
+          JOIN "Amenities" a ON rta."amenityId" = a.id
+          WHERE rta."roomTypeId" = rt.id
+        ), '[]'::json) as amenities
+      FROM "RoomType" rt
+      LEFT JOIN "Branch" b ON rt."branchId" = b.id
+      WHERE rt.id = $1
+    `, [roomTypeId])
 
     console.log('✅ Room type created with', roomType.images?.length || 0, 'images')
 

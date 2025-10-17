@@ -65,10 +65,11 @@ export async function GET(request: NextRequest) {
               'id', ri.id,
               'url', ri.url,
               'caption', ri.caption,
+              'isPrimary', ri."isPrimary",
               'order', ri."order"
             ) ORDER BY ri."order" ASC
           )
-          FROM room_images ri
+          FROM "RoomImage" ri
           WHERE ri."roomTypeId" = rt.id
         ), '[]'::json) as images,
         COALESCE((
@@ -80,17 +81,17 @@ export async function GET(request: NextRequest) {
               'category', a.category
             )
           )
-          FROM room_type_amenities rta
-          JOIN amenities a ON rta."amenityId" = a.id
+          FROM "RoomTypeAmenity" rta
+          JOIN "Amenities" a ON rta."amenityId" = a.id
           WHERE rta."roomTypeId" = rt.id
         ), '[]'::json) as amenities,
         (
           SELECT COUNT(*)::int
-          FROM rooms r
+          FROM "Room" r
           WHERE r."roomTypeId" = rt.id
         ) as "availableRooms"
-      FROM room_types rt
-      LEFT JOIN branches b ON rt."branchId" = b.id
+      FROM "RoomType" rt
+      LEFT JOIN "Branch" b ON rt."branchId" = b.id
       WHERE ${whereClause}
       ORDER BY rt."isFeatured" DESC, rt."popularityScore" DESC, rt."basePrice" ASC`,
       values

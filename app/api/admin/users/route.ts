@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
       gp.id AS guestProfileId, gp."loyaltyPoints", gp."memberSince", gp."totalBookings", gp."totalSpent",
       sp.id AS staffProfileId, sp."employeeId", sp."branchId", sp.department, sp.position, sp.salary, sp."hireDate"
     FROM users u
-    LEFT JOIN guest_profiles gp ON gp."userId" = u.id
-    LEFT JOIN staff_profiles sp ON sp."userId" = u.id
+    LEFT JOIN "GuestProfile" gp ON gp."userId " = u.id
+    LEFT JOIN "StaffProfile" sp ON sp."userId" = u.id
     ORDER BY u."createdAt" DESC
   `);
 

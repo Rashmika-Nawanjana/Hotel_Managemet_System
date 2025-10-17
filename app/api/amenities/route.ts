@@ -19,12 +19,12 @@ export async function GET(request: NextRequest) {
 
     if (category) {
       amenities = await query<Amenity>(
-        'SELECT * FROM amenities WHERE category = $1 ORDER BY name ASC',
+        'SELECT * FROM "Amenities" WHERE category = $1 ORDER BY name ASC',
         [category]
       )
     } else {
       amenities = await query<Amenity>(
-        'SELECT * FROM amenities ORDER BY name ASC'
+        'SELECT * FROM "Amenities" ORDER BY name ASC'
       )
     }
 

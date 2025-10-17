@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Search, Filter, Users, Maximize, Bed, MapPin, Star, ChevronDown } from 'lucide-react'
+import { Search, Filter, Users, Maximize, Bed, MapPin, Star } from 'lucide-react'
 
 interface RoomType {
   id: string
@@ -186,8 +186,11 @@ export default function BrowseRoomsPage() {
   }
 
   const getPrimaryImage = (room: RoomType) => {
-    const primary = room.images?.find(img => img.isPrimary)
-    return primary?.url || room.images?.[0]?.url || '/placeholder-room.jpg'
+    if (!room.images || room.images.length === 0) {
+      return '/placeholder-room.jpg'
+    }
+    const primary = room.images.find(img => img.isPrimary)
+    return primary?.url || room.images[0]?.url || '/placeholder-room.jpg'
   }
 
   const bedTypes = ['Single', 'Twin', 'Double', 'Queen', 'King', 'California King']
@@ -490,7 +493,7 @@ export default function BrowseRoomsPage() {
                             className="text-lg"
                             title={amenity.name}
                           >
-                            {amenity.icon}
+                            {amenity.icon || '🏨'}
                           </span>
                         ))}
                         {room.amenities.length > 4 && (

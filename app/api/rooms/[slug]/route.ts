@@ -33,10 +33,11 @@ export async function GET(
               'id', ri.id,
               'url', ri.url,
               'caption', ri.caption,
+              'isPrimary', ri."isPrimary",
               'order', ri."order"
             ) ORDER BY ri."order" ASC
           )
-          FROM room_images ri
+          FROM "RoomImage" ri
           WHERE ri."roomTypeId" = rt.id
         ), '[]'::json) as images,
         COALESCE((
@@ -48,12 +49,12 @@ export async function GET(
               'category', a.category
             )
           )
-          FROM room_type_amenities rta
-          JOIN amenities a ON rta."amenityId" = a.id
+          FROM "RoomTypeAmenity" rta
+          JOIN "Amenities" a ON rta."amenityId" = a.id
           WHERE rta."roomTypeId" = rt.id
         ), '[]'::json) as amenities
-      FROM room_types rt
-      LEFT JOIN branches b ON rt."branchId" = b.id
+      FROM "RoomType" rt
+      LEFT JOIN "Branch" b ON rt."branchId" = b.id
       WHERE rt.slug = $1`,
       [slug]
     )
@@ -68,7 +69,7 @@ export async function GET(
     // Get available rooms separately
     const rooms = await query(
       `SELECT id, "roomNumber", floor, status
-       FROM rooms
+       FROM "Room"
        WHERE "roomTypeId" = $1 AND status = 'AVAILABLE'`,
       [roomType.id]
     )
