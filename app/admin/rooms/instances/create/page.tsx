@@ -76,12 +76,27 @@ export default function CreateRoomInstancePage() {
 
   const fetchRoomTypes = async () => {
     try {
-      const response = await fetch('/api/admin/rooms', {
-        credentials: 'include',
-      })
+      // Prefer admin endpoint (has more details); if it fails, fall back to public rooms API
+      let response = await fetch('/api/admin/rooms', { credentials: 'include' })
+      if (!response.ok) {
+        console.warn('/api/admin/rooms failed, falling back to /api/rooms', response.status)
+        response = await fetch('/api/rooms?status=active')
+      }
+
       if (response.ok) {
         const data = await response.json()
-        setRoomTypes(data.data || [])
+        // Normalize shape: ensure numeric basePrice and branch id
+        const normalized = (data.data || []).map((rt: any) => ({
+          id: rt.id,
+          name: rt.name,
+          bedType: rt.bedType ?? rt.bed_type ?? '',
+          maxOccupancy: rt.maxOccupancy ?? rt.max_occupancy ?? 1,
+          basePrice: typeof rt.basePrice === 'string' ? parseFloat(rt.basePrice) : rt.basePrice ?? 0,
+          branch: rt.branch ? { id: rt.branch.id } : rt.branchId ? { id: rt.branchId } : undefined,
+        }))
+        setRoomTypes(normalized)
+      } else {
+        console.error('Failed to fetch room types from both admin and public endpoints')
       }
     } catch (err) {
       console.error('Error fetching room types:', err)

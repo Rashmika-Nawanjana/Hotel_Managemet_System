@@ -350,6 +350,8 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
@@ -392,14 +394,17 @@ export default function AdminUsersPage() {
   };
 
   // Fetch users (shared for reload)
-  const fetchUsers = async () => {
+  const fetchUsers = async (p: number = 1) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/users", { credentials: "include" });
+      const res = await fetch(`/api/admin/users?page=${p}&limit=10`, { credentials: "include" });
       if (!res.ok) throw new Error("Unauthorized or failed to fetch users");
       const data = await res.json();
-      setUsers(data.users);
+      setUsers(data.users || data.users === undefined ? data.users || data.users : data.users || data.users);
+      setUsers(data.users || data.users || []);
+      setTotal(data.total || 0);
+      setPage(data.page || p);
     } catch (err: any) {
       setError(err.message || "Failed to load users");
     } finally {
@@ -407,9 +412,16 @@ export default function AdminUsersPage() {
     }
   };
   React.useEffect(() => {
-    fetchUsers();
+    fetchUsers(page);
     // eslint-disable-next-line
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(total / 10));
+
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages) return;
+    fetchUsers(p);
+  };
 
   const filteredUsers = users.filter(
     (user) =>
@@ -610,6 +622,26 @@ export default function AdminUsersPage() {
                   </tbody>
                 </table>
               )}
+            </div>
+            {/* Pagination */}
+            <div className="flex items-center justify-between mt-4 px-6 py-3">
+              <div className="text-sm text-gray-400">Page {page} of {total ? Math.max(1, Math.ceil(total / 10)) : 1}</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= Math.max(1, Math.ceil(total / 10))}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </Card>
         </div>

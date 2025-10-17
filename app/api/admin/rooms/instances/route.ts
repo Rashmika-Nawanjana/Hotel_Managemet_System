@@ -119,11 +119,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create room
-    const created = await execute(
+    const created = await queryOne(
       'INSERT INTO "Room" (id, "roomNumber", floor, "roomTypeId", "branchId", notes, status, "createdAt", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id',
       [roomNumber, parseInt(floor.toString()), roomTypeId, branchId, notes || null, 'AVAILABLE']
     )
-    const roomId = created[0].id
+    if (!created || !('id' in created)) {
+      console.error('Insert returned no id:', created)
+      return NextResponse.json({ error: 'Failed to create room' }, { status: 500 })
+    }
+    const roomId = (created as any).id
     const room = await queryOne(
       `SELECT r.*, 
         json_build_object('id', rt.id, 'name', rt.name, 'basePrice', rt."basePrice", 'bedType', rt."bedType", 'maxOccupancy', rt."maxOccupancy") as "roomType",
