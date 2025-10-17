@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query, queryOne, execute } from '@/lib/db-queries'
 import { verifyToken } from '@/lib/auth'
 
 export async function GET(
@@ -22,22 +22,37 @@ export async function GET(
 
     const { id } = await params
 
-    const room = await prisma.room.findUnique({
-      where: { id },
-      include: {
-        roomType: {
-          include: {
-            amenities: {
-              include: {
-                amenity: true,
-              },
-            },
-            images: true,
-          },
-        },
-        branch: true,
-      },
-    })
+    const room = await queryOne(`
+      SELECT 
+        r.*,
+        json_build_object('id', b.id, 'name', b.name, 'location', b.location, 'address', b.address) as branch,
+        json_build_object(
+          'id', rt.id,
+          'name', rt.name,
+          'description', rt.description,
+          'basePrice', rt."basePrice",
+          'maxOccupancy', rt."maxOccupancy",
+          'bedType', rt."bedType",
+          'numberOfBeds', rt."numberOfBeds",
+          'roomSize', rt."roomSize",
+          'viewType', rt."viewType",
+          'amenities', COALESCE((
+            SELECT json_agg(json_build_object('amenity', json_build_object('id', a.id, 'name', a.name, 'icon', a.icon, 'category', a.category)))
+            FROM "RoomTypeAmenity" rta
+            JOIN "Amenities" a ON rta."amenityId" = a.id
+            WHERE rta."roomTypeId" = rt.id
+          ), '[]'::json),
+          'images', COALESCE((
+            SELECT json_agg(json_build_object('id', ri.id, 'url', ri.url, 'isPrimary', ri."isPrimary"))
+            FROM "RoomImage" ri
+            WHERE ri."roomTypeId" = rt.id
+          ), '[]'::json)
+        ) as "roomType"
+      FROM "Room" r
+      JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+      JOIN "Branch" b ON r."branchId" = b.id
+      WHERE r.id = $1
+    `, [id])
 
     if (!room) {
       return NextResponse.json({ error: 'Room not found' }, { status: 404 })
@@ -89,27 +104,45 @@ export async function PUT(
     const body = await request.json()
     const { status, notes, lastCleaned, lastMaintenance } = body
 
-    const updateData: any = {}
+    const setClauses: string[] = []
+    const values: any[] = []
+    let idx = 1
 
-    if (status) updateData.status = status
-    if (notes !== undefined) updateData.notes = notes
-    if (lastCleaned) updateData.lastCleaned = new Date(lastCleaned)
-    if (lastMaintenance) updateData.lastMaintenance = new Date(lastMaintenance)
+    const maybeSet = (column: string, value: any, transform?: (v: any) => any) => {
+      if (value !== undefined) {
+        setClauses.push(`${column} = $${idx}`)
+        values.push(transform ? transform(value) : value)
+        idx += 1
+      }
+    }
 
-    const room = await prisma.room.update({
-      where: { id },
-      data: updateData,
-      include: {
-        roomType: true,
-        branch: true,
-      },
-    })
+    maybeSet('status', status)
+    maybeSet('notes', notes)
+    maybeSet('"lastCleaned"', lastCleaned, (v) => new Date(v))
+    maybeSet('"lastMaintenance"', lastMaintenance, (v) => new Date(v))
+    if (setClauses.length > 0) {
+      setClauses.push('"updatedAt" = NOW()')
+      await execute(
+        `UPDATE "Room" SET ${setClauses.join(', ')} WHERE id = $${idx}`,
+        [...values, id]
+      )
+    }
+
+    const updated = await queryOne(`
+      SELECT r.*, 
+        json_build_object('id', rt.id, 'name', rt.name, 'basePrice', rt."basePrice", 'bedType', rt."bedType", 'maxOccupancy', rt."maxOccupancy") as "roomType",
+        json_build_object('id', b.id, 'name', b.name, 'location', b.location) as branch
+      FROM "Room" r
+      JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+      JOIN "Branch" b ON r."branchId" = b.id
+      WHERE r.id = $1
+    `, [id])
 
     return NextResponse.json(
       {
         success: true,
         message: 'Room updated successfully',
-        data: room,
+        data: updated,
       },
       { status: 200 }
     )
@@ -142,27 +175,20 @@ export async function DELETE(
 
     const { id } = await params
 
-    const activeBookings = await prisma.booking.count({
-      where: {
-        roomId: id,
-        status: {
-          in: ['PENDING', 'CONFIRMED'],
-        },
-      },
-    })
+    const active = await queryOne(
+      `SELECT COUNT(*)::int as cnt FROM "Booking" WHERE "roomId" = $1 AND status IN ('PENDING','CONFIRMED')`,
+      [id]
+    )
+    const activeBookings = active?.cnt || 0
 
     if (activeBookings > 0) {
       return NextResponse.json(
-        {
-          error: `Cannot delete room with ${activeBookings} active bookings`,
-        },
+        { error: `Cannot delete room with ${activeBookings} active bookings` },
         { status: 400 }
       )
     }
 
-    await prisma.room.delete({
-      where: { id },
-    })
+    await execute('DELETE FROM "Room" WHERE id = $1', [id])
 
     return NextResponse.json(
       {

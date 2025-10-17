@@ -16,6 +16,9 @@ interface RoomType {
   bedType: string
   maxOccupancy: number
   basePrice: number
+  branch?: {
+    id: string
+  }
 }
 
 export default function CreateRoomInstancePage() {
@@ -52,7 +55,7 @@ export default function CreateRoomInstancePage() {
   useEffect(() => {
     // Filter room types by selected branch
     if (formData.branchId) {
-      const filtered = roomTypes.filter((rt) => rt.id === formData.branchId || true) // Adjust based on your schema
+      const filtered = roomTypes.filter((rt) => rt.branch?.id === formData.branchId)
       setFilteredRoomTypes(filtered)
     } else {
       setFilteredRoomTypes(roomTypes)

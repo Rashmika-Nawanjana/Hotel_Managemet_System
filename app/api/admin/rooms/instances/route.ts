@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { query, queryOne, execute } from '@/lib/db-queries'
 import { verifyToken } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
@@ -31,31 +31,29 @@ export async function GET(request: NextRequest) {
     if (status) where.status = status
     if (floor) where.floor = parseInt(floor)
 
-    const rooms = await prisma.room.findMany({
-      where,
-      include: {
-        roomType: {
-          select: {
-            id: true,
-            name: true,
-            basePrice: true,
-            bedType: true,
-            maxOccupancy: true,
-          },
-        },
-        branch: {
-          select: {
-            id: true,
-            name: true,
-            location: true,
-          },
-        },
-      },
-      orderBy: [{ floor: 'asc' }, { roomNumber: 'asc' }],
-    })
+    const clauses: string[] = []
+    const paramsArr: any[] = []
+    let p = 1
+    if (branchId) { clauses.push(`r."branchId" = $${p++}`); paramsArr.push(branchId) }
+    if (roomTypeId) { clauses.push(`r."roomTypeId" = $${p++}`); paramsArr.push(roomTypeId) }
+    if (status) { clauses.push(`r.status = $${p++}`); paramsArr.push(status) }
+    if (floor) { clauses.push(`r.floor = $${p++}`); paramsArr.push(parseInt(floor)) }
 
-    // Transform to convert Decimal to number
-    const transformedRooms = rooms.map((room) => ({
+    const whereSql = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    const rooms = await query(
+      `SELECT 
+         r.*, 
+         json_build_object('id', rt.id, 'name', rt.name, 'basePrice', rt."basePrice", 'bedType', rt."bedType", 'maxOccupancy', rt."maxOccupancy") as "roomType",
+         json_build_object('id', b.id, 'name', b.name, 'location', b.location) as branch
+       FROM "Room" r
+       JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+       JOIN "Branch" b ON r."branchId" = b.id
+       ${whereSql}
+       ORDER BY r.floor ASC, r."roomNumber" ASC`,
+      paramsArr
+    )
+
+    const transformedRooms = rooms.map((room: any) => ({
       ...room,
       roomType: {
         ...room.roomType,
@@ -108,12 +106,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if room number already exists in branch
-    const existingRoom = await prisma.room.findFirst({
-      where: {
-        roomNumber,
-        branchId,
-      },
-    })
+    const existingRoom = await queryOne(
+      'SELECT id FROM "Room" WHERE "roomNumber" = $1 AND "branchId" = $2',
+      [roomNumber, branchId]
+    )
 
     if (existingRoom) {
       return NextResponse.json(
@@ -123,20 +119,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Create room
-    const room = await prisma.room.create({
-      data: {
-        roomNumber,
-        floor: parseInt(floor.toString()),
-        roomTypeId,
-        branchId,
-        notes: notes || null,
-        status: 'AVAILABLE',
-      },
-      include: {
-        roomType: true,
-        branch: true,
-      },
-    })
+    const created = await execute(
+      'INSERT INTO "Room" (id, "roomNumber", floor, "roomTypeId", "branchId", notes, status, "createdAt", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id',
+      [roomNumber, parseInt(floor.toString()), roomTypeId, branchId, notes || null, 'AVAILABLE']
+    )
+    const roomId = created[0].id
+    const room = await queryOne(
+      `SELECT r.*, 
+        json_build_object('id', rt.id, 'name', rt.name, 'basePrice', rt."basePrice", 'bedType', rt."bedType", 'maxOccupancy', rt."maxOccupancy") as "roomType",
+        json_build_object('id', b.id, 'name', b.name, 'location', b.location) as branch
+       FROM "Room" r
+       JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+       JOIN "Branch" b ON r."branchId" = b.id
+       WHERE r.id = $1`,
+      [roomId]
+    )
 
     return NextResponse.json(
       {

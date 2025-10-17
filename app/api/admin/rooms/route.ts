@@ -180,8 +180,8 @@ export async function POST(request: NextRequest) {
     console.log('🆕 Creating room type:', name)
     console.log('📸 Images to save:', images?.length || 0)
 
-    // Create room type
-    const roomTypeResult = await execute(`
+    // Create room type and return id
+    const roomTypeRow = await queryOne(`
       INSERT INTO "RoomType" (
         id, name, slug, description, "shortDescription", "basePrice", 
         "maxOccupancy", "bedType", "numberOfBeds", "roomSize", "viewType", 
@@ -203,8 +203,10 @@ export async function POST(request: NextRequest) {
       branchId,
       isFeatured || false
     ])
-
-    const roomTypeId = roomTypeResult[0].id
+    if (!roomTypeRow) {
+      throw new Error('Failed to create room type')
+    }
+    const roomTypeId = (roomTypeRow as any).id
 
     // Add amenities if provided
     if (amenityIds && amenityIds.length > 0) {
