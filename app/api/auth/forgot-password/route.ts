@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user exists
       const user = await queryOne<any>(
-        'SELECT "userId", email, "firstName" FROM users WHERE email = $1',
+        'SELECT id, email, firstname FROM users WHERE email = $1',
         [email.toLowerCase()]
       )
 
@@ -47,15 +47,14 @@ export async function POST(request: NextRequest) {
 
     // Delete old unused tokens and create new one
     await transaction(async (client) => {
-        await client.query(
-          'DELETE FROM password_reset_tokens WHERE "userId" = $1 AND used = false',
-          [user.userId]
-        )
+          await client.query(
+            'DELETE FROM "PasswordResetToken" WHERE "userId" = $1 AND used = false',
+            [user.id]
+          )
 
         await client.query(
-          `INSERT INTO password_reset_tokens (id, token, "userId", "expiresAt", used, "createdAt")
-           VALUES ($1, $2, $3, $4, false, NOW())`,
-          [tokenId, resetToken, user.userId, expiresAt]
+          'INSERT INTO "PasswordResetToken" (id, token, "userId", "expiresAt", used, "createdAt") VALUES ($1, $2, $3, $4, false, NOW())',
+          [tokenId, resetToken, user.id, expiresAt]
         )
     })
 

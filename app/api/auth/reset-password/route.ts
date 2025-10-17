@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
 
     // Find valid token
     const resetToken = await queryOne<any>(
-      `SELECT id, "userId", "expiresAt", used 
-       FROM password_reset_tokens 
-       WHERE token = $1`,
+  `SELECT id, "userId", "expiresAt", used 
+   FROM "PasswordResetToken" 
+   WHERE token = $1`,
       [token]
     )
 
@@ -61,13 +61,13 @@ export async function POST(request: NextRequest) {
     await transaction(async (client) => {
       // Update user password
       await client.query(
-        'UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2',
+  'UPDATE users SET password = $1, updatedat = NOW() WHERE id = $2',
         [hashedPassword, resetToken.userId]
       )
 
       // Mark token as used
       await client.query(
-        'UPDATE password_reset_tokens SET used = true WHERE id = $1',
+        'UPDATE "PasswordResetToken" SET used = true WHERE id = $1',
         [resetToken.id]
       )
     })
