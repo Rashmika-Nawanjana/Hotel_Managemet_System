@@ -6,9 +6,8 @@ import { useRouter } from 'next/navigation'
 
 export default function StaffLoginPage() {
   const [formData, setFormData] = useState({
-    employeeId: '',
-    password: '',
-    branch: ''
+    email: '',
+    password: ''
   })
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -29,15 +28,28 @@ export default function StaffLoginPage() {
     setError('')
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      if (formData.employeeId && formData.password && formData.branch) {
-        router.push('/staff/dashboard')
+      const response = await fetch('/api/auth/staff-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Redirect based on staff role
+        if (data.user.staffRole === 'MANAGEMENT') {
+          router.push('/staff/dashboard?role=management')
+        } else {
+          router.push('/staff/dashboard?role=frontdesk')
+        }
       } else {
-        setError('Please fill in all required fields')
+        setError(data.error || 'Login failed')
       }
     } catch (err) {
-      setError('Invalid credentials or unauthorized access')
+      setError('Network error. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -156,36 +168,16 @@ export default function StaffLoginPage() {
 
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                  <label htmlFor="branch" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Select Branch *
-                  </label>
-                  <select
-                    id="branch"
-                    value={formData.branch}
-                    onChange={(e) => handleInputChange('branch', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                    required
-                  >
-                    <option value="">Choose your branch</option>
-                    {branches.map(branch => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name} - {branch.location}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="employeeId" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Employee ID *
+                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Work Email *
                   </label>
                   <input
-                    id="employeeId"
-                    type="text"
-                    value={formData.employeeId}
-                    onChange={(e) => handleInputChange('employeeId', e.target.value)}
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                    placeholder="Enter your employee ID"
+                    placeholder="Enter your work email"
                     required
                   />
                 </div>
