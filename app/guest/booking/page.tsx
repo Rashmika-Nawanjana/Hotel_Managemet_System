@@ -1,124 +1,226 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+
+interface RoomType {
+  id: string
+  name: string
+  slug: string
+  description: string
+  shortDescription: string
+  basePrice: number
+  maxOccupancy: number
+  bedType: string
+  numberOfBeds: number
+  roomSize: number
+  viewType: string
+  branch: {
+    id: string
+    name: string
+    location: string
+    address: string
+  }
+  images: Array<{
+    id: string
+    url: string
+    caption: string
+    order: number
+  }>
+  amenities: Array<{
+    id: string
+    name: string
+    icon: string
+    category: string
+  }>
+}
+
+interface Branch {
+  id: string
+  name: string
+  location: string
+  address: string
+}
 
 export default function BookingPage() {
-  const router = useRouter()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const roomId = searchParams.get('roomId')
-  const roomSlug = searchParams.get('roomSlug')
+  const checkIn = searchParams.get('checkIn')
+  const checkOut = searchParams.get('checkOut')
+  const guests = searchParams.get('guests')
 
-  const [room, setRoom] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [roomType, setRoomType] = useState<RoomType | null>(null)
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  
-  const [checkIn, setCheckIn] = useState(searchParams.get('checkIn') || '')
-  const [checkOut, setCheckOut] = useState(searchParams.get('checkOut') || '')
-  const [guests, setGuests] = useState(parseInt(searchParams.get('guests') || '1'))
-  const [specialRequests, setSpecialRequests] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const [formData, setFormData] = useState({
+    checkInDate: checkIn || '',
+    checkOutDate: checkOut || '',
+    numberOfGuests: guests ? parseInt(guests) : 1,
+    branchId: '',
+    roomTypeId: roomId || '',
+    specialRequests: '',
+    // Guest Information
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    // Credit Card Information (not charged immediately)
+    cardNumber: '',
+    cardExpiry: '',
+    cardCvv: '',
+    cardName: '',
+    billingAddress: '',
+    billingCity: '',
+    billingPostalCode: '',
+    billingCountry: ''
+  })
 
   useEffect(() => {
-    if (roomSlug) {
-      fetchRoom()
-    }
-  }, [roomSlug])
+    fetchInitialData()
+  }, [])
 
-  const fetchRoom = async () => {
+  const fetchInitialData = async () => {
     try {
-      const response = await fetch(`/api/rooms/${roomSlug}`)
-      if (!response.ok) throw new Error('Failed to fetch room')
+      setLoading(true)
       
-      const data = await response.json()
-      setRoom(data.data)
+      // Fetch branches
+      const branchesRes = await fetch('/api/branches')
+      const branchesData = await branchesRes.json()
+      if (branchesRes.ok) {
+        setBranches(branchesData.branches || [])
+        if (branchesData.branches?.length > 0) {
+          setFormData(prev => ({ ...prev, branchId: branchesData.branches[0].id }))
+        }
+      }
+
+      // Fetch room type if roomId is provided
+      if (roomId) {
+        const roomRes = await fetch(`/api/rooms/${roomId}`)
+        const roomData = await roomRes.json()
+        if (roomRes.ok) {
+          setRoomType(roomData.roomType)
+          setFormData(prev => ({ 
+            ...prev, 
+            roomTypeId: roomData.roomType.id,
+            branchId: roomData.roomType.branch?.id || prev.branchId
+          }))
+        }
+      }
     } catch (err) {
-      console.error('Error fetching room:', err)
-      setError('Failed to load room details')
+      setError('Failed to load booking data')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const calculateNights = () => {
-    if (!checkIn || !checkOut) return 0
-    const start = new Date(checkIn)
-    const end = new Date(checkOut)
-    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-    return diff > 0 ? diff : 0
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const handleBooking = async (e: React.FormEvent) => {
+  const calculateTotalPrice = () => {
+    if (!roomType || !formData.checkInDate || !formData.checkOutDate) return 0
+    
+    const checkIn = new Date(formData.checkInDate)
+    const checkOut = new Date(formData.checkOutDate)
+    const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+    
+    return nights * roomType.basePrice
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
+    setSubmitting(true)
     setError('')
 
     try {
-      // Find an available room instance
-      const availableRoom = room.rooms?.find((r: any) => r.status === 'AVAILABLE')
-      
-      if (!availableRoom) {
-        throw new Error('No rooms available for the selected dates')
+      // Validate required fields
+      const requiredFields = [
+        'checkInDate', 'checkOutDate', 'branchId', 'roomTypeId',
+        'firstName', 'lastName', 'email', 'phone',
+        'cardNumber', 'cardExpiry', 'cardCvv', 'cardName',
+        'billingAddress', 'billingCity', 'billingPostalCode', 'billingCountry'
+      ]
+
+      const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData])
+      if (missingFields.length > 0) {
+        setError(`Please fill in all required fields: ${missingFields.join(', ')}`)
+        setSubmitting(false)
+        return
+      }
+
+      // Validate dates
+      const checkIn = new Date(formData.checkInDate)
+      const checkOut = new Date(formData.checkOutDate)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      if (checkIn < today) {
+        setError('Check-in date cannot be in the past')
+        setSubmitting(false)
+        return
+      }
+
+      if (checkOut <= checkIn) {
+        setError('Check-out date must be after check-in date')
+        setSubmitting(false)
+        return
+      }
+
+      // Create booking
+      const bookingData = {
+        ...formData,
+        totalPrice: calculateTotalPrice(),
+        // Credit card info is stored but not charged immediately
+        paymentInfo: {
+          cardNumber: formData.cardNumber.replace(/\s/g, ''),
+          cardExpiry: formData.cardExpiry,
+          cardCvv: formData.cardCvv,
+          cardName: formData.cardName,
+          billingAddress: formData.billingAddress,
+          billingCity: formData.billingCity,
+          billingPostalCode: formData.billingPostalCode,
+          billingCountry: formData.billingCountry
+        }
       }
 
       const response = await fetch('/api/bookings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          roomId: availableRoom.id,
-          checkInDate: checkIn,
-          checkOutDate: checkOut,
-          numberOfGuests: guests,
-          specialRequests,
-        }),
+        body: JSON.stringify(bookingData)
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create booking')
+        throw new Error(result.error || 'Failed to create booking')
       }
 
-      // Redirect to payment page
-      router.push(`/guest/booking/payment?bookingId=${data.data.id}`)
+      // Redirect to confirmation page
+      router.push(`/guest/booking/confirmation?bookingId=${result.booking.id}`)
     } catch (err: any) {
       setError(err.message || 'Failed to create booking')
     } finally {
-      setIsSubmitting(false)
+      setSubmitting(false)
     }
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    )
-  }
-
-  if (!room) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-xl text-gray-600 mb-4">Room not found</p>
-          <Link href="/rooms" className="text-blue-600 hover:underline">
-            Browse rooms
-          </Link>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading booking form...</p>
         </div>
       </div>
     )
   }
-
-  const nights = calculateNights()
-  const basePrice = typeof room.basePrice === 'string' ? parseFloat(room.basePrice) : room.basePrice
-  const totalPrice = nights * basePrice
-  const serviceFee = Math.round(totalPrice * 0.1)
-  const taxes = Math.round(totalPrice * 0.12)
-  const grandTotal = totalPrice + serviceFee + taxes
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -126,199 +228,366 @@ export default function BookingPage() {
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <Link href={`/rooms/${roomSlug}`} className="flex items-center text-gray-600 hover:text-blue-600 transition">
-              <span className="mr-2">←</span>
-              <span>Back to Room</span>
-            </Link>
-            
-            <Link href="/" className="flex items-center space-x-3">
+            <Link href="/guest/search-rooms" className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
                 <span className="text-white font-bold text-xl">SN</span>
               </div>
-              <span className="text-xl font-bold text-gray-800">Sky Nest</span>
+              <div>
+                <span className="text-xl font-bold text-gray-800">Sky Nest</span>
+                <p className="text-xs text-gray-500 -mt-1">Book Your Stay</p>
+              </div>
             </Link>
-
-            <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              Dashboard
-            </Link>
+            
+            <div className="flex items-center space-x-4">
+              <Link href="/guest/my-bookings" className="text-gray-600 hover:text-blue-600 transition">My Bookings</Link>
+              <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Dashboard</Link>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Complete Your Booking</h1>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-8 py-6">
+            <h1 className="text-2xl font-bold text-white">Complete Your Booking</h1>
+            <p className="text-blue-100 mt-1">Your credit card information will be securely stored but not charged until check-in</p>
           </div>
-        )}
 
-        <form onSubmit={handleBooking} className="grid lg:grid-cols-3 gap-8">
-          {/* Main Form */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Room Info */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Room Details</h2>
-              <div className="flex gap-4">
-                {room.images && room.images[0] && (
-                  <img
-                    src={room.images[0].url}
-                    alt={room.name}
-                    className="w-32 h-32 object-cover rounded-lg"
-                  />
-                )}
+          <form onSubmit={handleSubmit} className="p-8">
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600">{error}</p>
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Left Column - Booking Details */}
+              <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">{room.name}</h3>
-                  <p className="text-gray-600">{room.branch.name}</p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    {room.maxOccupancy} guests • {room.bedType} • {room.roomSize}m²
-                  </p>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Booking Details</h2>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Check-in Date</label>
+                      <input
+                        type="date"
+                        name="checkInDate"
+                        value={formData.checkInDate}
+                        onChange={handleInputChange}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Check-out Date</label>
+                      <input
+                        type="date"
+                        name="checkOutDate"
+                        value={formData.checkOutDate}
+                        onChange={handleInputChange}
+                        min={formData.checkInDate || new Date().toISOString().split('T')[0]}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
+                      <select
+                        name="numberOfGuests"
+                        value={formData.numberOfGuests}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        {[1,2,3,4,5,6].map(num => (
+                          <option key={num} value={num}>{num} guest{num > 1 ? 's' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
+                      <select
+                        name="branchId"
+                        value={formData.branchId}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        <option value="">Select Branch</option>
+                        {branches.map(branch => (
+                          <option key={branch.id} value={branch.id}>{branch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
+                    <textarea
+                      name="specialRequests"
+                      value={formData.specialRequests}
+                      onChange={handleInputChange}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Any special requests or notes..."
+                    />
+                  </div>
+                </div>
+
+                {/* Guest Information */}
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Guest Information</h2>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Credit Card Information */}
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Payment Information</h2>
+                  <p className="text-sm text-gray-600 mb-4">Your card will be securely stored but not charged until check-in</p>
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Card Number</label>
+                    <input
+                      type="text"
+                      name="cardNumber"
+                      value={formData.cardNumber}
+                      onChange={handleInputChange}
+                      placeholder="1234 5678 9012 3456"
+                      maxLength={19}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                      <input
+                        type="text"
+                        name="cardExpiry"
+                        value={formData.cardExpiry}
+                        onChange={handleInputChange}
+                        placeholder="MM/YY"
+                        maxLength={5}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">CVV</label>
+                      <input
+                        type="text"
+                        name="cardCvv"
+                        value={formData.cardCvv}
+                        onChange={handleInputChange}
+                        placeholder="123"
+                        maxLength={4}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Cardholder Name</label>
+                    <input
+                      type="text"
+                      name="cardName"
+                      value={formData.cardName}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Billing Address</label>
+                    <input
+                      type="text"
+                      name="billingAddress"
+                      value={formData.billingAddress}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                      <input
+                        type="text"
+                        name="billingCity"
+                        value={formData.billingCity}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Postal Code</label>
+                      <input
+                        type="text"
+                        name="billingPostalCode"
+                        value={formData.billingPostalCode}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                      <input
+                        type="text"
+                        name="billingCountry"
+                        value={formData.billingCountry}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Booking Details */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Booking Details</h2>
-              
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Check-in Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={checkIn}
-                    onChange={(e) => setCheckIn(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+              {/* Right Column - Booking Summary */}
+              <div className="space-y-6">
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Booking Summary</h2>
+                  
+                  {roomType ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-4">
+                        {roomType.images?.[0] && (
+                          <img 
+                            src={roomType.images[0].url} 
+                            alt={roomType.name}
+                            className="w-20 h-20 object-cover rounded-lg"
+                          />
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{roomType.name}</h3>
+                          <p className="text-sm text-gray-600">{roomType.branch?.name}</p>
+                          <p className="text-sm text-gray-600">{roomType.bedType} • {roomType.maxOccupancy} guests</p>
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <div className="flex justify-between text-sm">
+                          <span>Check-in:</span>
+                          <span>{formData.checkInDate || 'Select date'}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Check-out:</span>
+                          <span>{formData.checkOutDate || 'Select date'}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Guests:</span>
+                          <span>{formData.numberOfGuests}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Nights:</span>
+                          <span>
+                            {formData.checkInDate && formData.checkOutDate 
+                              ? Math.ceil((new Date(formData.checkOutDate).getTime() - new Date(formData.checkInDate).getTime()) / (1000 * 60 * 60 * 24))
+                              : 0
+                            }
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <div className="flex justify-between text-sm mb-2">
+                          <span>Price per night:</span>
+                          <span>${roomType.basePrice}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold text-lg">
+                          <span>Total:</span>
+                          <span>${calculateTotalPrice()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-600">Select a room type to see pricing</p>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Check-out Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={checkOut}
-                    onChange={(e) => setCheckOut(e.target.value)}
-                    min={checkIn || new Date().toISOString().split('T')[0]}
-                    required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">Payment Policy</h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• Your card will be securely stored but not charged</li>
+                    <li>• Payment will be processed at check-in</li>
+                    <li>• Free cancellation up to 24 hours before check-in</li>
+                    <li>• All prices include taxes and fees</li>
+                  </ul>
                 </div>
-              </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Number of Guests *
-                </label>
-                <select
-                  value={guests}
-                  onChange={(e) => setGuests(parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                <button
+                  type="submit"
+                  disabled={submitting || !roomType || !formData.checkInDate || !formData.checkOutDate}
+                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
-                  {Array.from({ length: room.maxOccupancy }, (_, i) => i + 1).map((num) => (
-                    <option key={num} value={num}>
-                      {num} Guest{num > 1 ? 's' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Special Requests (Optional)
-                </label>
-                <textarea
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Any special requirements?"
-                />
+                  {submitting ? 'Creating Booking...' : 'Complete Booking'}
+                </button>
               </div>
             </div>
-
-            {/* Cancellation Policy */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-              <h3 className="font-semibold text-blue-900 mb-3">Cancellation Policy</h3>
-              <p className="text-sm text-blue-900">
-                Free cancellation up to 5 days before check-in. Cancellations within 1-4 days incur a 1-night charge. 
-                No refund for same-day cancellations or no-shows.
-              </p>
-            </div>
-          </div>
-
-          {/* Booking Summary */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-xl p-6 sticky top-24">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Booking Summary</h2>
-
-              {nights > 0 && (
-                <>
-                  <div className="space-y-3 mb-4 pb-4 border-b">
-                    <div className="flex justify-between text-gray-700">
-                      <span>LKR {basePrice.toFixed(2)} × {nights} night{nights > 1 ? 's' : ''}</span>
-                      <span>LKR {totalPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-700">
-                      <span>Service fee</span>
-                      <span>LKR {serviceFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-700">
-                      <span>Taxes</span>
-                      <span>LKR {taxes.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between font-bold text-xl mb-6">
-                    <span>Total</span>
-                    <span className="text-blue-600">LKR {grandTotal.toFixed(2)}</span>
-                  </div>
-                </>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting || nights === 0}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-semibold"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center justify-center">
-                    <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></span>
-                    Processing...
-                  </span>
-                ) : (
-                  'Continue to Payment'
-                )}
-              </button>
-
-              <p className="text-center text-sm text-gray-500 mt-4">
-                You won't be charged yet
-              </p>
-
-              <div className="mt-6 pt-6 border-t space-y-3 text-sm text-gray-600">
-                <p className="flex items-center gap-2">
-                  <span>✓</span>
-                  Free cancellation up to 5 days
-                </p>
-                <p className="flex items-center gap-2">
-                  <span>✓</span>
-                  Instant confirmation
-                </p>
-                <p className="flex items-center gap-2">
-                  <span>✓</span>
-                  Secure payment
-                </p>
-              </div>
-            </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   )
+}
 }

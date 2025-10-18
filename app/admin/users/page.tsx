@@ -31,13 +31,36 @@ function UserFormModal({
   initial?: UserFormFields;
   isEdit?: boolean;
 }) {
-  const [form, setForm] = useState<UserFormFields>(initial || {});
+  const [form, setForm] = useState<UserFormFields>({
+    role: "GUEST",
+    status: "ACTIVE", 
+    idType: "NATIONAL_ID",
+    twoFactorEnabled: false,
+    emailVerified: false,
+    ...initial
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Reset form when opening
   React.useEffect(() => {
-    setForm(initial || {});
+    const defaultForm = {
+      role: "GUEST",
+      status: "ACTIVE",
+      idType: "NATIONAL_ID",
+      twoFactorEnabled: false,
+      emailVerified: false,
+      ...initial
+    };
+    
+    // Format date for input field if it exists
+    if (defaultForm.dateOfBirth && typeof defaultForm.dateOfBirth === 'string') {
+      // Convert ISO date to YYYY-MM-DD format for input
+      const date = new Date(defaultForm.dateOfBirth);
+      defaultForm.dateOfBirth = date.toISOString().split('T')[0];
+    }
+    
+    setForm(defaultForm);
     setError("");
   }, [open, initial]);
 
@@ -52,26 +75,30 @@ function UserFormModal({
     setLoading(true);
     setError("");
     try {
-      if (
-        !form.firstName ||
-        !form.lastName ||
-        !form.email ||
-        (!isEdit && !form.password) ||
-        !form.role ||
-        !form.status ||
-        !form.dateOfBirth ||
-        !form.nationality ||
-        !form.phone ||
-        !form.idType ||
-        !form.idNumber ||
-        !form.address ||
-        !form.city ||
-        !form.postalCode
-      ) {
-        setError("All required fields must be filled.");
+      // Check each required field individually for better error messages
+      const missingFields = [];
+      if (!form.firstName) missingFields.push('First Name');
+      if (!form.lastName) missingFields.push('Last Name');
+      if (!form.email) missingFields.push('Email');
+      if (!isEdit && !form.password) missingFields.push('Password');
+      if (!form.role) missingFields.push('Role');
+      if (!form.status) missingFields.push('Status');
+      if (!form.dateOfBirth) missingFields.push('Date of Birth');
+      if (!form.nationality) missingFields.push('Nationality');
+      if (!form.phone) missingFields.push('Phone');
+      if (!form.idType) missingFields.push('ID Type');
+      if (!form.idNumber) missingFields.push('ID Number');
+      if (!form.address) missingFields.push('Address');
+      if (!form.city) missingFields.push('City');
+      if (!form.postalCode) missingFields.push('Postal Code');
+
+      if (missingFields.length > 0) {
+        setError(`Missing required fields: ${missingFields.join(', ')}`);
         setLoading(false);
         return;
       }
+
+      // Two-factor secret is optional even when enabled
       await onSubmit(form);
       onClose();
     } catch (err: any) {
@@ -201,6 +228,30 @@ function UserFormModal({
               className="col-span-2 p-2 rounded bg-[#10141c] border border-gray-700 text-white"
               required
             />
+            <select
+              name="role"
+              value={form.role || "GUEST"}
+              onChange={handleChange}
+              className="col-span-2 p-2 rounded bg-[#10141c] border border-gray-700 text-white"
+              required
+            >
+              <option value="">Select Role</option>
+              <option value="GUEST">Guest</option>
+              <option value="STAFF">Staff</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+            <select
+              name="status"
+              value={form.status || "ACTIVE"}
+              onChange={handleChange}
+              className="col-span-2 p-2 rounded bg-[#10141c] border border-gray-700 text-white"
+              required
+            >
+              <option value="">Select Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+              <option value="SUSPENDED">Suspended</option>
+            </select>
             <label className="col-span-2 flex items-center gap-2 text-white text-sm">
               <input
                 type="checkbox"
@@ -210,15 +261,17 @@ function UserFormModal({
                   setForm((f) => ({ ...f, twoFactorEnabled: e.target.checked }))
                 }
               />
-              Two-Factor Enabled
+              Two-Factor Enabled (Optional)
             </label>
-            <input
-              name="twoFactorSecret"
-              value={form.twoFactorSecret || ""}
-              onChange={handleChange}
-              placeholder="Two-Factor Secret (optional)"
-              className="col-span-2 p-2 rounded bg-[#10141c] border border-gray-700 text-white"
-            />
+            {form.twoFactorEnabled && (
+              <input
+                name="twoFactorSecret"
+                value={form.twoFactorSecret || ""}
+                onChange={handleChange}
+                placeholder="Two-Factor Secret (Optional)"
+                className="col-span-2 p-2 rounded bg-[#10141c] border border-gray-700 text-white"
+              />
+            )}
             <label className="col-span-2 flex items-center gap-2 text-white text-sm">
               <input
                 type="checkbox"
@@ -354,7 +407,32 @@ export default function AdminUsersPage() {
   const [total, setTotal] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+  const [editUserDetails, setEditUserDetails] = useState<any>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  // Fetch user details for editing
+  const fetchUserDetails = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        credentials: "include",
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to fetch user details");
+      return payload.user;
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch user details");
+      return null;
+    }
+  };
+
+  // Handle edit button click
+  const handleEditClick = async (user: User) => {
+    setEditUser(user);
+    const userDetails = await fetchUserDetails(user.id);
+    if (userDetails) {
+      setEditUserDetails(userDetails);
+    }
+  };
+
   // Add user
   const handleAddUser = async (data: any) => {
     const res = await fetch("/api/admin/users", {
@@ -363,34 +441,46 @@ export default function AdminUsersPage() {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Failed to add user");
-    // Refresh users
-    await fetchUsers();
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.error || 'Failed to add user');
+    // Refresh users and go to first page
+    await fetchUsers(1);
   };
 
   // Edit user
   const handleEditUser = async (data: any) => {
-    const res = await fetch(`/api/admin/users/${editUser?.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Failed to update user");
-    setEditUser(null);
-    await fetchUsers();
+    try {
+      const res = await fetch(`/api/admin/users/${editUser?.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to update user");
+      setEditUser(null);
+      setEditUserDetails(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.message || "Failed to update user");
+    }
   };
 
   // Delete user
   const handleDeleteUser = async () => {
     if (!deleteUser) return;
-    const res = await fetch(`/api/admin/users/${deleteUser.id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Failed to delete user");
-    setDeleteUser(null);
-    await fetchUsers();
+    try {
+      const res = await fetch(`/api/admin/users/${deleteUser.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to delete user");
+      setDeleteUser(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete user");
+    }
   };
 
   // Fetch users (shared for reload)
@@ -586,7 +676,7 @@ export default function AdminUsersPage() {
                           <div className="flex justify-end space-x-2">
                             <button
                               className="p-2 text-gray-400 hover:text-amber-400"
-                              onClick={() => setEditUser(user)}
+                              onClick={() => handleEditClick(user)}
                             >
                               <Edit size={16} />
                             </button>
@@ -604,9 +694,12 @@ export default function AdminUsersPage() {
                             />
                             <UserFormModal
                               open={!!editUser}
-                              onClose={() => setEditUser(null)}
+                              onClose={() => {
+                                setEditUser(null);
+                                setEditUserDetails(null);
+                              }}
                               onSubmit={handleEditUser}
-                              initial={editUser || undefined}
+                              initial={editUserDetails || undefined}
                               isEdit={true}
                             />
                             <ConfirmModal

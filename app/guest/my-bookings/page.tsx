@@ -3,10 +3,42 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
+interface Booking {
+  id: string
+  bookingReference: string
+  checkInDate: string
+  checkOutDate: string
+  numberOfGuests: number
+  totalPrice: number
+  status: string
+  paymentStatus: string
+  specialRequests: string
+  createdAt: string
+  room: {
+    id: string
+    roomNumber: string
+    floor: number
+    status: string
+    roomType: {
+      id: string
+      name: string
+      slug: string
+      basePrice: number
+      maxOccupancy: number
+      bedType: string
+    }
+    branch: {
+      id: string
+      name: string
+      location: string
+    }
+  }
+}
+
 export default function MyBookingsPage() {
-  const [bookings, setBookings] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState('all')
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetchBookings()
@@ -14,220 +46,230 @@ export default function MyBookingsPage() {
 
   const fetchBookings = async () => {
     try {
+      setLoading(true)
       const response = await fetch('/api/bookings', {
-        credentials: 'include',
+        credentials: 'include'
       })
 
-      if (!response.ok) throw new Error('Failed to fetch bookings')
+      const result = await response.json()
 
-      const data = await response.json()
-      setBookings(data.data || [])
-    } catch (err) {
-      console.error('Error fetching bookings:', err)
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch bookings')
+      }
+
+      setBookings(result.bookings || [])
+    } catch (err: any) {
+      setError(err.message || 'Failed to load bookings')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to cancel this booking?')) return
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'CONFIRMED':
+        return 'bg-green-100 text-green-800'
+      case 'CHECKED_IN':
+        return 'bg-blue-100 text-blue-800'
+      case 'CHECKED_OUT':
+        return 'bg-gray-100 text-gray-800'
+      case 'CANCELLED':
+        return 'bg-red-100 text-red-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getPaymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'PAID':
+        return 'bg-green-100 text-green-800'
+      case 'REFUNDED':
+        return 'bg-blue-100 text-blue-800'
+      case 'FAILED':
+        return 'bg-red-100 text-red-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const cancelBooking = async (bookingId: string) => {
+    if (!confirm('Are you sure you want to cancel this booking?')) {
+      return
+    }
 
     try {
       const response = await fetch(`/api/bookings/${bookingId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status: 'CANCELLED' }),
+        body: JSON.stringify({ status: 'CANCELLED' })
       })
 
-      if (!response.ok) throw new Error('Failed to cancel booking')
+      const result = await response.json()
 
-      alert('Booking cancelled successfully')
-      fetchBookings()
-    } catch (err) {
-      alert('Failed to cancel booking')
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to cancel booking')
+      }
+
+      // Refresh bookings
+      await fetchBookings()
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel booking')
     }
   }
 
-  const filteredBookings = filterStatus === 'all' 
-    ? bookings 
-    : bookings.filter(b => b.status.toLowerCase() === filterStatus.toLowerCase())
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'CONFIRMED':
-        return 'bg-green-100 text-green-700 border-green-200'
-      case 'PENDING':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-200'
-      case 'CANCELLED':
-        return 'bg-red-100 text-red-700 border-red-200'
-      case 'COMPLETED':
-        return 'bg-gray-100 text-gray-700 border-gray-200'
-      default:
-        return 'bg-gray-100 text-gray-700 border-gray-200'
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'CONFIRMED':
-        return '✓'
-      case 'PENDING':
-        return '⏳'
-      case 'CANCELLED':
-        return '✗'
-      case 'COMPLETED':
-        return '✓✓'
-      default:
-        return '•'
-    }
-  }
-
-  const canCancel = (booking: any) => {
-    const checkInDate = new Date(booking.checkInDate)
-    const daysUntilCheckIn = Math.ceil((checkInDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    return booking.status === 'CONFIRMED' && daysUntilCheckIn >= 5
-  }
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your bookings...</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Rest of your existing JSX remains the same until the bookings map... */}
-      
-      {/* Replace the bookings map with this: */}
-      {filteredBookings.length > 0 ? (
-        <div className="space-y-6">
-          {filteredBookings.map(booking => {
-            const primaryImage = booking.room?.roomType?.images?.find((img: any) => img.isPrimary)
-            const nights = Math.ceil(
-              (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / 
-              (1000 * 60 * 60 * 24)
-            )
-
-            return (
-              <div key={booking.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition">
-                <div className="md:flex">
-                  {/* Image */}
-                  <div className="md:w-1/3 relative">
-                    <img 
-                      src={primaryImage?.url || '/placeholder-room.jpg'} 
-                      alt={booking.room?.roomType?.name}
-                      className="w-full h-64 md:h-full object-cover"
-                    />
-                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full border ${getStatusColor(booking.status)}`}>
-                      <span className="text-sm font-semibold flex items-center">
-                        <span className="mr-1">{getStatusIcon(booking.status)}</span>
-                        {booking.status}
-                      </span>
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <Link href="/guest/search-rooms" className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl flex items-center justify-center">
+                <span className="text-white font-bold text-xl">SN</span>
+              </div>
+              <div>
+                <span className="text-xl font-bold text-gray-800">Sky Nest</span>
+                <p className="text-xs text-gray-500 -mt-1">My Bookings</p>
+              </div>
+            </Link>
+            
+            <div className="flex items-center space-x-4">
+              <Link href="/guest/search-rooms" className="text-gray-600 hover:text-blue-600 transition">Search Rooms</Link>
+              <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Dashboard</Link>
+            </div>
+          </div>
                     </div>
                   </div>
 
-                  {/* Content */}
-                  <div className="md:w-2/3 p-6">
-                    <div className="flex justify-between items-start mb-4">
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h1>
+          <p className="text-gray-600">View and manage your hotel reservations</p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {bookings.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">📋</div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">No bookings found</h3>
+            <p className="text-gray-600 mb-6">You haven't made any reservations yet</p>
+            <Link 
+              href="/guest/search-rooms"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              Search Rooms
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {bookings.map((booking) => (
+              <div key={booking.id} className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-1">
-                          {booking.room?.roomType?.name}
+                      <h3 className="text-xl font-semibold text-gray-900 mb-1">
+                        {booking.room.roomType.name}
                         </h3>
-                        <p className="text-gray-600 flex items-center">
-                          <span className="mr-1">📍</span>
-                          {booking.room?.branch?.name}
+                      <p className="text-gray-600 mb-2">
+                        {booking.room.branch.name} • Room {booking.room.roomNumber}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Booking Reference: <span className="font-mono font-semibold">{booking.bookingReference}</span>
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-600">Booking Ref</p>
-                        <p className="font-semibold text-gray-900">{booking.bookingReference}</p>
+                      <div className="flex space-x-2 mb-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
+                          {booking.status.replace('_', ' ')}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(booking.paymentStatus)}`}>
+                          {booking.paymentStatus}
+                        </span>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">${booking.totalPrice}</p>
                       </div>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-4 mb-6 pb-6 border-b">
+                  <div className="grid md:grid-cols-3 gap-4 mb-4">
                       <div>
-                        <p className="text-sm text-gray-600 mb-1">Check-in</p>
-                        <p className="font-semibold text-gray-900">
-                          {new Date(booking.checkInDate).toLocaleDateString()}
-                        </p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
+                      <p className="text-gray-900">{formatDate(booking.checkInDate)}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 mb-1">Check-out</p>
-                        <p className="font-semibold text-gray-900">
-                          {new Date(booking.checkOutDate).toLocaleDateString()}
-                        </p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-out</label>
+                      <p className="text-gray-900">{formatDate(booking.checkOutDate)}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 mb-1">Duration</p>
-                        <p className="font-semibold text-gray-900">
-                          {nights} night{nights > 1 ? 's' : ''}, {booking.numberOfGuests} guest{booking.numberOfGuests > 1 ? 's' : ''}
-                        </p>
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Guests</label>
+                      <p className="text-gray-900">{booking.numberOfGuests} guest{booking.numberOfGuests > 1 ? 's' : ''}</p>
+                    </div>
                     </div>
 
-                    <div className="flex flex-wrap justify-between items-center gap-4">
-                      <div>
-                        <p className="text-sm text-gray-600">Total Amount</p>
-                        <p className="text-2xl font-bold text-gray-900">LKR {booking.totalPrice.toFixed(2)}</p>
-                        {booking.paymentStatus === 'PAID' ? (
-                          <p className="text-sm text-green-600 font-medium">✓ Fully Paid</p>
-                        ) : (
-                          <p className="text-sm text-orange-600 font-medium">⚠️ Payment Pending</p>
-                        )}
-                      </div>
+                  {booking.specialRequests && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Special Requests</label>
+                      <p className="text-gray-900 bg-gray-50 p-3 rounded-lg">{booking.specialRequests}</p>
+                    </div>
+                  )}
 
-                      <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="text-sm text-gray-500">
+                      Booked on {formatDate(booking.createdAt)}
+                    </div>
+                    <div className="flex space-x-3">
                         <Link 
                           href={`/guest/booking/confirmation?bookingId=${booking.id}`}
-                          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+                        className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium"
                         >
                           View Details
                         </Link>
-
-                        {canCancel(booking) && (
+                      {booking.status === 'PENDING' && (
                           <button
-                            onClick={() => handleCancelBooking(booking.id)}
-                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
-                          >
-                            Cancel
+                          onClick={() => cancelBooking(booking.id)}
+                          className="px-4 py-2 border border-red-600 text-red-600 rounded-lg hover:bg-red-50 transition font-medium"
+                        >
+                          Cancel Booking
                           </button>
                         )}
-
-                        {booking.status === 'COMPLETED' && (
-                          <button className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition font-medium">
-                            ⭐ Rate Stay
-                          </button>
-                        )}
-                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-md p-12 text-center">
-          <span className="text-6xl mb-4 block">🏨</span>
-          <h3 className="text-2xl font-bold text-gray-900 mb-2">No bookings found</h3>
-          <p className="text-gray-600 mb-6">
-            {filterStatus === 'all' 
-              ? "You haven't made any bookings yet. Start planning your next trip!"
-              : `You don't have any ${filterStatus} bookings.`}
-          </p>
-          <Link 
-            href="/rooms"
-            className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-          >
-            Browse Rooms
-          </Link>
+            ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

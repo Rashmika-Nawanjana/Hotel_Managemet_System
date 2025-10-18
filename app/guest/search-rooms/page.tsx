@@ -1,7 +1,46 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+
+interface RoomType {
+  id: string
+  name: string
+  slug: string
+  description: string
+  shortDescription: string
+  basePrice: number
+  maxOccupancy: number
+  bedType: string
+  numberOfBeds: number
+  roomSize: number
+  viewType: string
+  branch: {
+    id: string
+    name: string
+    location: string
+    address: string
+  }
+  images: Array<{
+    id: string
+    url: string
+    caption: string
+    order: number
+  }>
+  amenities: Array<{
+    id: string
+    name: string
+    icon: string
+    category: string
+  }>
+}
+
+interface Branch {
+  id: string
+  name: string
+  location: string
+  address: string
+}
 
 export default function SearchRoomsPage() {
   const [filters, setFilters] = useState({
@@ -13,96 +52,122 @@ export default function SearchRoomsPage() {
     priceRange: 'all'
   })
 
-  const branches = [
-    { id: 'colombo', name: 'Sky Nest Colombo', location: 'Colombo City Center' },
-    { id: 'kandy', name: 'Sky Nest Kandy', location: 'Kandy Hills' },
-    { id: 'galle', name: 'Sky Nest Galle', location: 'Galle Fort' }
-  ]
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
+  const [availableRooms, setAvailableRooms] = useState<RoomType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const roomTypes = [
-    { id: 'deluxe', name: 'Deluxe Room' },
-    { id: 'suite', name: 'Suite' },
-    { id: 'presidential', name: 'Presidential Suite' }
-  ]
+  useEffect(() => {
+    fetchInitialData()
+  }, [])
 
-  // Mock available rooms data
-  const availableRooms = [
-    {
-      id: 1,
-      name: 'Deluxe Room',
-      branch: 'Sky Nest Colombo',
-      price: 120,
-      image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400',
-      size: '35 sqm',
-      beds: 'King Size Bed',
-      capacity: 2,
-      amenities: ['Free WiFi', 'City View', 'Mini Bar', 'Air Conditioning'],
-      available: 5
-    },
-    {
-      id: 2,
-      name: 'Suite',
-      branch: 'Sky Nest Colombo',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=400',
-      size: '55 sqm',
-      beds: 'King Size Bed',
-      capacity: 3,
-      amenities: ['Free WiFi', 'Ocean View', 'Living Area', 'Balcony', 'Mini Bar'],
-      available: 3
-    },
-    {
-      id: 3,
-      name: 'Presidential Suite',
-      branch: 'Sky Nest Kandy',
-      price: 350,
-      image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=400',
-      size: '85 sqm',
-      beds: 'King Size Bed + Sofa Bed',
-      capacity: 4,
-      amenities: ['Free WiFi', 'Mountain View', 'Private Terrace', 'Jacuzzi', 'Butler Service'],
-      available: 2
-    },
-    {
-      id: 4,
-      name: 'Deluxe Room',
-      branch: 'Sky Nest Galle',
-      price: 130,
-      image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400',
-      size: '35 sqm',
-      beds: 'Queen Size Bed',
-      capacity: 2,
-      amenities: ['Free WiFi', 'Beach View', 'Mini Bar', 'Air Conditioning'],
-      available: 8
-    },
-    {
-      id: 5,
-      name: 'Suite',
-      branch: 'Sky Nest Kandy',
-      price: 210,
-      image: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=400',
-      size: '55 sqm',
-      beds: 'King Size Bed',
-      capacity: 3,
-      amenities: ['Free WiFi', 'Garden View', 'Living Area', 'Balcony', 'Tea Garden Access'],
-      available: 4
-    },
-    {
-      id: 6,
-      name: 'Presidential Suite',
-      branch: 'Sky Nest Galle',
-      price: 380,
-      image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=400',
-      size: '90 sqm',
-      beds: 'King Size Bed + Sofa Bed',
-      capacity: 4,
-      amenities: ['Free WiFi', 'Ocean View', 'Private Pool', 'Butler Service', 'Dining Area'],
-      available: 1
+  useEffect(() => {
+    if (branches.length > 0 || roomTypes.length > 0) {
+      fetchAvailableRooms()
     }
-  ]
+  }, [filters, branches, roomTypes])
+
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true)
+      
+      // Fetch branches
+      const branchesRes = await fetch('/api/branches')
+      const branchesData = await branchesRes.json()
+      if (branchesRes.ok) {
+        setBranches(branchesData.branches || [])
+      }
+
+      // Fetch room types
+      const roomsRes = await fetch('/api/rooms')
+      const roomsData = await roomsRes.json()
+      if (roomsRes.ok) {
+        setRoomTypes(roomsData.roomTypes || [])
+      }
+    } catch (err) {
+      setError('Failed to load room data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchAvailableRooms = async () => {
+    try {
+      const params = new URLSearchParams()
+      
+      if (filters.branch) params.append('branchId', filters.branch)
+      if (filters.checkIn) params.append('checkIn', filters.checkIn)
+      if (filters.checkOut) params.append('checkOut', filters.checkOut)
+      if (filters.guests) params.append('guests', filters.guests.toString())
+      if (filters.roomType) params.append('roomType', filters.roomType)
+      if (filters.priceRange !== 'all') params.append('priceRange', filters.priceRange)
+
+      const res = await fetch(`/api/rooms/search?${params.toString()}`)
+      const data = await res.json()
+      
+      if (res.ok) {
+        setAvailableRooms(data.roomTypes || [])
+      } else {
+        setAvailableRooms([])
+      }
+    } catch (err) {
+      setAvailableRooms([])
+    }
+  }
 
   const handleFilterChange = (field: string, value: string | number) => {
     setFilters(prev => ({ ...prev, [field]: value }))
+  }
+
+  const getPriceRangeFilter = (room: RoomType) => {
+    const price = room.basePrice
+    switch (filters.priceRange) {
+      case 'budget':
+        return price < 150
+      case 'mid':
+        return price >= 150 && price <= 250
+      case 'luxury':
+        return price > 250
+      default:
+        return true
+    }
+  }
+
+  const filteredRooms = availableRooms.filter(room => {
+    const matchesBranch = !filters.branch || room.branch?.id === filters.branch
+    const matchesRoomType = !filters.roomType || room.id === filters.roomType
+    const matchesGuests = room.maxOccupancy >= filters.guests
+    const matchesPriceRange = getPriceRangeFilter(room)
+    
+    return matchesBranch && matchesRoomType && matchesGuests && matchesPriceRange
+  })
+
+  const sortRooms = (rooms: RoomType[], sortBy: string) => {
+    switch (sortBy) {
+      case 'price-low':
+        return [...rooms].sort((a, b) => a.basePrice - b.basePrice)
+      case 'price-high':
+        return [...rooms].sort((a, b) => b.basePrice - a.basePrice)
+      case 'name':
+        return [...rooms].sort((a, b) => a.name.localeCompare(b.name))
+      default:
+        return rooms
+    }
+  }
+
+  const [sortBy, setSortBy] = useState('recommended')
+  const sortedRooms = sortRooms(filteredRooms, sortBy)
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading rooms...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -229,36 +294,35 @@ export default function SearchRoomsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Available Rooms</h1>
-            <p className="text-gray-600">{availableRooms.length} rooms found</p>
+            <p className="text-gray-600">{sortedRooms.length} rooms found</p>
           </div>
           
-          <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-            <option>Sort by: Recommended</option>
-            <option>Price: Low to High</option>
-            <option>Price: High to Low</option>
-            <option>Rating: High to Low</option>
+          <select 
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="recommended">Sort by: Recommended</option>
+            <option value="price-low">Price: Low to High</option>
+            <option value="price-high">Price: High to Low</option>
+            <option value="name">Name: A to Z</option>
           </select>
         </div>
 
         {/* Room Cards Grid */}
         <div className="grid lg:grid-cols-2 gap-6">
-          {availableRooms.map(room => (
+          {sortedRooms.map(room => (
             <div key={room.id} className="bg-white rounded-xl shadow-md hover:shadow-xl transition duration-300 overflow-hidden">
               <div className="md:flex">
                 <div className="md:w-2/5 relative">
                   <img 
-                    src={room.image} 
+                    src={room.images?.[0]?.url || 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'} 
                     alt={room.name}
                     className="w-full h-64 md:h-full object-cover"
                   />
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                    <span className="text-sm font-semibold text-gray-800">{room.size}</span>
+                    <span className="text-sm font-semibold text-gray-800">{room.roomSize} sqm</span>
                   </div>
-                  {room.available <= 3 && (
-                    <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full">
-                      <span className="text-xs font-semibold">Only {room.available} left!</span>
-                    </div>
-                  )}
                 </div>
                 
                 <div className="md:w-3/5 p-6">
@@ -267,7 +331,7 @@ export default function SearchRoomsPage() {
                       <h3 className="text-xl font-bold text-gray-900 mb-1">{room.name}</h3>
                       <p className="text-sm text-gray-600 flex items-center">
                         <span className="mr-1">📍</span>
-                        {room.branch}
+                        {room.branch?.name}
                       </p>
                     </div>
                   </div>
@@ -276,11 +340,11 @@ export default function SearchRoomsPage() {
                     <div className="flex items-center space-x-4 text-sm text-gray-600">
                       <span className="flex items-center">
                         <span className="mr-1">🛏️</span>
-                        {room.beds}
+                        {room.bedType}
                       </span>
                       <span className="flex items-center">
                         <span className="mr-1">👥</span>
-                        Up to {room.capacity} guests
+                        Up to {room.maxOccupancy} guests
                       </span>
                     </div>
                   </div>
@@ -288,12 +352,12 @@ export default function SearchRoomsPage() {
                   <div className="mb-4">
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Amenities:</h4>
                     <div className="flex flex-wrap gap-2">
-                      {room.amenities.slice(0, 4).map((amenity, idx) => (
+                      {room.amenities?.slice(0, 4).map((amenity, idx) => (
                         <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
-                          {amenity}
+                          {amenity.name}
                         </span>
                       ))}
-                      {room.amenities.length > 4 && (
+                      {room.amenities && room.amenities.length > 4 && (
                         <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
                           +{room.amenities.length - 4} more
                         </span>
@@ -303,7 +367,7 @@ export default function SearchRoomsPage() {
 
                   <div className="flex items-end justify-between">
                     <div>
-                      <span className="text-2xl font-bold text-gray-900">${room.price}</span>
+                      <span className="text-2xl font-bold text-gray-900">${room.basePrice}</span>
                       <span className="text-gray-600 text-sm ml-1">/ night</span>
                     </div>
                     <div className="flex space-x-2">
@@ -314,7 +378,7 @@ export default function SearchRoomsPage() {
                         View Details
                       </Link>
                       <Link 
-                        href={`/guest/booking?roomId=${room.id}`}
+                        href={`/guest/booking?roomId=${room.id}&checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
                       >
                         Book Now
@@ -328,7 +392,7 @@ export default function SearchRoomsPage() {
         </div>
 
         {/* No Results */}
-        {availableRooms.length === 0 && (
+        {sortedRooms.length === 0 && (
           <div className="text-center py-16">
             <span className="text-6xl mb-4 block">🔍</span>
             <h3 className="text-2xl font-bold text-gray-900 mb-2">No rooms found</h3>

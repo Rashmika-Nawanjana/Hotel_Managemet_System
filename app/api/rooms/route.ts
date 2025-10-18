@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       FROM "RoomType" rt
       LEFT JOIN "Branch" b ON rt."branchId" = b.id
       WHERE ${whereClause}
-      ORDER BY rt."isFeatured" DESC, rt."popularityScore" DESC, rt."basePrice" ASC`,
+      ORDER BY rt."isFeatured" DESC, rt.popularity_score DESC, rt."basePrice" ASC`,
       values
     )
 
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         count: roomTypes.length,
-        data: roomTypes,
+        roomTypes: roomTypes,
       },
       { status: 200 }
     )

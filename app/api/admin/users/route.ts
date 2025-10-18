@@ -33,6 +33,80 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { execute } from '@/lib/db-queries'
+import bcrypt from 'bcryptjs'
+
 export async function POST(request: NextRequest) {
-  return NextResponse.json({ error: 'Not implemented' }, { status: 501 })
+  try {
+    // auth
+    const token = request.cookies.get('auth-token')?.value
+    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const decoded = verifyToken(token)
+    if (!decoded || decoded.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      role,
+      status,
+      dateOfBirth,
+      nationality,
+      phone,
+      idType,
+      idNumber,
+      address,
+      city,
+      postalCode,
+      twoFactorEnabled,
+      twoFactorSecret,
+      emailVerified,
+    } = body
+
+    // validate required
+    if (!firstName || !lastName || !email || !password || !role || !status || !dateOfBirth || !nationality) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // check email uniqueness
+    const existing = await query(`SELECT id FROM users WHERE email = $1`, [email])
+    if (existing && existing.length > 0) {
+      return NextResponse.json({ error: 'Email already in use' }, { status: 400 })
+    }
+
+    const hashed = await bcrypt.hash(password, 10)
+
+    await execute(
+      `INSERT INTO users (id, email, password, role, status, emailverified, firstname, lastname, phone, dateofbirth, nationality, idtype, idnumber, address, city, postalcode, twofactorenabled, twofactorsecret, createdat, updatedat)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())`,
+      [
+        email,
+        hashed,
+        role,
+        status,
+        emailVerified ? true : false,
+        firstName,
+        lastName,
+        phone || '',
+        dateOfBirth,
+        nationality,
+        idType || 'NATIONAL_ID',
+        idNumber || '',
+        address || '',
+        city || '',
+        postalCode || '',
+        twoFactorEnabled ? true : false,
+        twoFactorSecret || null,
+      ]
+    )
+
+    return NextResponse.json({ success: true, message: 'User created' }, { status: 201 })
+  } catch (error) {
+    console.error('Error creating admin user:', error)
+    return NextResponse.json({ error: 'Failed to create user' }, { status: 500 })
+  }
 }

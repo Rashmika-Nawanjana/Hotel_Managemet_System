@@ -1,132 +1,485 @@
-// app/admin/bookings/page.tsx
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import AdminSidebar from '@/app/components/AdminSidebar'
-import { Search, Filter, ChevronDown } from 'lucide-react'
-import React from 'react'
-import gsap from 'gsap'
+import { Search, Filter, Eye, Edit, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react'
 
-// Mock Data
-const bookings = [
-  { id: 'BK-12465', guest: 'Alice Cooper', email: 'alice.c@example.com', phone: '+1 234 567 890', room: '410', branch: 'Colombo', amount: 976, checkIn: '2025-10-15', checkOut: '2025-10-18', status: 'Confirmed' },
-  { id: 'BK-12464', guest: 'Robert Taylor', email: 'rob.t@example.com', phone: '+44 20 7946 0958', room: '506', branch: 'Kandy', amount: 840, checkIn: '2025-10-12', checkOut: '2025-10-15', status: 'Confirmed' },
-  { id: 'BK-12463', guest: 'Lisa Anderson', email: 'lisa.a@example.com', phone: '+61 2 9953 2000', room: '312', branch: 'Galle', amount: 732, checkIn: '2025-10-02', checkOut: '2025-10-05', status: 'Checked-in' },
-  { id: 'BK-12462', guest: 'James Wilson', email: 'james.w@example.com', phone: '+1 888 452 1505', room: '208', branch: 'Colombo', amount: 658, checkIn: '2025-09-28', checkOut: '2025-10-01', status: 'Completed' },
-  { id: 'BK-12461', guest: 'Emma Brown', email: 'emma.b@example.com', phone: '+49 30 2093 4055', room: '501', branch: 'Galle', amount: 1400, checkIn: '2025-09-25', checkOut: '2025-10-02', status: 'Cancelled' },
-];
-
-const Card = ({ children, className }: { children: React.ReactNode, className?: string }) => (
-  <div className={`bg-[#181d28] border border-gray-800 rounded-xl ${className}`}>{children}</div>
-);
-
-const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Confirmed': return 'bg-blue-500/10 text-blue-400';
-      case 'Checked-in': return 'bg-green-500/10 text-green-400';
-      case 'Completed': return 'bg-gray-500/10 text-gray-400';
-      case 'Cancelled': return 'bg-red-500/10 text-red-400';
-      default: return 'bg-gray-500/10 text-gray-400';
+interface Booking {
+  id: string
+  bookingReference: string
+  checkInDate: string
+  checkOutDate: string
+  numberOfGuests: number
+  totalPrice: number
+  status: string
+  paymentStatus: string
+  specialRequests: string
+  createdAt: string
+  user: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+    phone: string
+  }
+  room: {
+    id: string
+    roomNumber: string
+    floor: number
+    status: string
+    roomType: {
+      id: string
+      name: string
+      slug: string
+      basePrice: number
+      maxOccupancy: number
+      bedType: string
     }
-};
-
-const BookingRow = ({ booking }: { booking: typeof bookings[0] }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const detailsRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (isExpanded) {
-            gsap.fromTo(detailsRef.current, { height: 0, opacity: 0 }, { height: 'auto', opacity: 1, duration: 0.3, ease: 'power2.out' });
-        } else {
-            gsap.to(detailsRef.current, { height: 0, opacity: 0, duration: 0.2, ease: 'power2.in' });
-        }
-    }, [isExpanded]);
-    
-    return (
-        <>
-            <tr onClick={() => setIsExpanded(!isExpanded)} className="hover:bg-white/5 transition-colors cursor-pointer">
-                <td className="px-6 py-4 text-sm font-medium text-white">{booking.id}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{booking.guest}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{booking.branch}</td>
-                <td className="px-6 py-4 text-sm font-semibold text-green-400">${booking.amount}</td>
-                <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>{booking.status}</span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                    <ChevronDown size={16} className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                </td>
-            </tr>
-            <tr>
-                <td colSpan={6} className="p-0">
-                    <div ref={detailsRef} className="bg-[#10141c] overflow-hidden" style={{ height: 0, opacity: 0 }}>
-                        <div className="p-6 grid grid-cols-3 gap-6">
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-400 mb-2">Guest Information</h4>
-                                <p><strong>Email:</strong> {booking.email}</p>
-                                <p><strong>Phone:</strong> {booking.phone}</p>
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-400 mb-2">Stay Details</h4>
-                                <p><strong>Check-in:</strong> {booking.checkIn}</p>
-                                <p><strong>Check-out:</strong> {booking.checkOut}</p>
-                            </div>
-                            <div className="flex items-center justify-end space-x-3">
-                                <button className="px-4 py-2 text-sm font-semibold bg-red-500/20 text-red-300 rounded-md hover:bg-red-500/30">Cancel Booking</button>
-                                <button className="px-4 py-2 text-sm font-semibold bg-amber-400/20 text-amber-300 rounded-md hover:bg-amber-400/30">Issue Refund</button>
-                            </div>
-                        </div>
-                    </div>
-                </td>
-            </tr>
-        </>
-    );
+    branch: {
+      id: string
+      name: string
+      location: string
+    }
+  }
 }
 
-export default function BookingsPage() {
-  const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={`bg-[#181d28] border border-gray-800 rounded-xl ${className}`}>
+    {children}
+  </div>
+)
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'bg-yellow-500/10 text-yellow-400'
+    case 'CONFIRMED':
+      return 'bg-green-500/10 text-green-400'
+    case 'CHECKED_IN':
+      return 'bg-blue-500/10 text-blue-400'
+    case 'CHECKED_OUT':
+      return 'bg-gray-500/10 text-gray-400'
+    case 'CANCELLED':
+      return 'bg-red-500/10 text-red-400'
+    default:
+      return 'bg-gray-500/10 text-gray-400'
+  }
+}
+
+const getPaymentStatusColor = (status: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'bg-yellow-500/10 text-yellow-400'
+    case 'PAID':
+      return 'bg-green-500/10 text-green-400'
+    case 'REFUNDED':
+      return 'bg-blue-500/10 text-blue-400'
+    case 'FAILED':
+      return 'bg-red-500/10 text-red-400'
+    default:
+      return 'bg-gray-500/10 text-gray-400'
+  }
+}
+
+export default function AdminBookingsPage() {
+  const [isSidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+
+  // Fetch bookings
+  const fetchBookings = async (p: number = 1) => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/bookings?page=${p}&limit=10`, { credentials: 'include' })
+      if (!res.ok) throw new Error('Unauthorized or failed to fetch bookings')
+      const data = await res.json()
+      setBookings(data.bookings || [])
+      setTotal(data.total || 0)
+      setPage(data.page || p)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load bookings')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchBookings(page)
+  }, [])
+
+  const totalPages = Math.max(1, Math.ceil(total / 10))
+
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages) return
+    fetchBookings(p)
+  }
+
+  const filteredBookings = bookings.filter(booking => {
+    const matchesStatus = filterStatus === 'all' || booking.status.toLowerCase() === filterStatus.toLowerCase()
+    const matchesPaymentStatus = filterPaymentStatus === 'all' || booking.paymentStatus.toLowerCase() === filterPaymentStatus.toLowerCase()
+    const matchesSearch = searchQuery === '' || 
+      booking.bookingReference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.user.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.user.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.room.roomNumber.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    return matchesStatus && matchesPaymentStatus && matchesSearch
+  })
+
+  const updateBookingStatus = async (bookingId: string, status: string) => {
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status })
+      })
+      
+      if (!res.ok) throw new Error('Failed to update booking')
+      
+      // Refresh bookings
+      await fetchBookings(page)
+    } catch (err: any) {
+      setError(err.message || 'Failed to update booking')
+    }
+  }
+
+  const deleteBooking = async (bookingId: string) => {
+    if (!confirm('Are you sure you want to delete this booking? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      
+      if (!res.ok) throw new Error('Failed to delete booking')
+      
+      // Refresh bookings
+      await fetchBookings(page)
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete booking')
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  }
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
 
   return (
     <div className="min-h-screen bg-[#10141c] text-gray-300 flex">
-      <AdminSidebar isCollapsed={isSidebarCollapsed} setIsCollapsed={setSidebarCollapsed} />
-      <main className={`flex-1 p-8 overflow-y-auto transition-all duration-500 ease-in-out ${isSidebarCollapsed ? 'pl-24' : 'pl-72'}`}>
+      <AdminSidebar
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setSidebarCollapsed}
+      />
+      <main
+        className={`flex-1 p-8 overflow-y-auto transition-all duration-500 ease-in-out ${
+          isSidebarCollapsed ? 'pl-24' : 'pl-72'
+        }`}
+      >
         <div className="max-w-7xl mx-auto">
-          <header className="mb-8">
-            <h1 className="text-3xl font-bold text-white font-l">Manage Bookings</h1>
-            <p className="text-gray-400">View, search, and manage all guest reservations.</p>
+          <header className="mb-8 flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-white font-l">
+                Booking Management
+              </h1>
+              <p className="text-gray-400">
+                Manage all hotel bookings, check-ins, and payments.
+              </p>
+            </div>
           </header>
 
           <Card>
-            <div className="p-6 flex justify-between items-center border-b border-gray-800">
-              <div className="relative w-1/3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                <input type="text" placeholder="Search by guest, ID, or room..." className="w-full bg-[#10141c] border border-gray-700 rounded-md pl-10 pr-4 py-2 focus:ring-amber-400 focus:border-amber-400" />
+            <div className="p-6 flex flex-wrap gap-4 items-center justify-between border-b border-gray-800">
+              <div className="flex space-x-2 bg-[#10141c] p-1 rounded-md">
+                <button
+                  onClick={() => setFilterStatus('all')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterStatus === 'all'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  All Status
+                </button>
+                <button
+                  onClick={() => setFilterStatus('pending')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterStatus === 'pending'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Pending
+                </button>
+                <button
+                  onClick={() => setFilterStatus('confirmed')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterStatus === 'confirmed'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Confirmed
+                </button>
+                <button
+                  onClick={() => setFilterStatus('checked_in')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterStatus === 'checked_in'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Checked In
+                </button>
+                <button
+                  onClick={() => setFilterStatus('cancelled')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterStatus === 'cancelled'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Cancelled
+                </button>
               </div>
-              <button className="flex items-center space-x-2 px-4 py-2 bg-[#10141c] border border-gray-700 rounded-md hover:bg-gray-800">
-                <Filter size={16} />
-                <span>Filter</span>
-              </button>
+
+              <div className="flex space-x-2 bg-[#10141c] p-1 rounded-md">
+                <button
+                  onClick={() => setFilterPaymentStatus('all')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterPaymentStatus === 'all'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  All Payments
+                </button>
+                <button
+                  onClick={() => setFilterPaymentStatus('pending')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterPaymentStatus === 'pending'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Payment Pending
+                </button>
+                <button
+                  onClick={() => setFilterPaymentStatus('paid')}
+                  className={`px-3 py-1 text-sm font-medium rounded ${
+                    filterPaymentStatus === 'paid'
+                      ? 'bg-amber-400 text-black'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  Paid
+                </button>
+              </div>
+
+              <div className="relative w-full max-w-xs">
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  size={18}
+                />
+                <input
+                  type="text"
+                  placeholder="Search bookings..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-[#10141c] border border-gray-700 rounded-md pl-10 pr-4 py-2 focus:ring-amber-400 focus:border-amber-400"
+                />
+              </div>
             </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="border-b border-gray-800">
-                  <tr>
-                    <th className="px-6 py-4 text-sm font-semibold text-gray-400">Booking ID</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-gray-400">Guest</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-gray-400">Branch</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-gray-400">Amount</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-gray-400">Status</th>
-                    <th className="px-6 py-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {bookings.map(booking => <BookingRow key={booking.id} booking={booking} />)}
-                </tbody>
-              </table>
+              {loading ? (
+                <div className="p-6 text-center text-gray-400">
+                  Loading bookings...
+                </div>
+              ) : error ? (
+                <div className="p-6 text-center text-red-400">{error}</div>
+              ) : (
+                <table className="w-full text-left">
+                  <thead className="border-b border-gray-800">
+                    <tr>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Booking</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Guest</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Room</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Dates</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Status</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Payment</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-gray-400">Total</th>
+                      <th className="px-6 py-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {filteredBookings.map((booking) => (
+                      <tr
+                        key={booking.id}
+                        className="hover:bg-white/5 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-white">
+                            {booking.bookingReference}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {formatDateTime(booking.createdAt)}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-white">
+                            {booking.user.firstName} {booking.user.lastName}
+                          </p>
+                          <p className="text-sm text-gray-500">{booking.user.email}</p>
+                          <p className="text-sm text-gray-500">{booking.numberOfGuests} guest{booking.numberOfGuests > 1 ? 's' : ''}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-white">
+                            {booking.room.roomType.name}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Room {booking.room.roomNumber} • {booking.room.branch.name}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm text-gray-300">
+                            {formatDate(booking.checkInDate)}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            to {formatDate(booking.checkOutDate)}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                              booking.status
+                            )}`}
+                          >
+                            {booking.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(
+                              booking.paymentStatus
+                            )}`}
+                          >
+                            {booking.paymentStatus}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-white">
+                            ${booking.totalPrice}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              className="p-2 text-gray-400 hover:text-blue-400"
+                              onClick={() => window.open(`/guest/booking/confirmation?bookingId=${booking.id}`, '_blank')}
+                              title="View Details"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            
+                            {booking.status === 'PENDING' && (
+                              <button
+                                className="p-2 text-gray-400 hover:text-green-400"
+                                onClick={() => updateBookingStatus(booking.id, 'CONFIRMED')}
+                                title="Confirm Booking"
+                              >
+                                <CheckCircle size={16} />
+                              </button>
+                            )}
+                            
+                            {booking.status === 'CONFIRMED' && (
+                              <button
+                                className="p-2 text-gray-400 hover:text-blue-400"
+                                onClick={() => updateBookingStatus(booking.id, 'CHECKED_IN')}
+                                title="Check In"
+                              >
+                                <Clock size={16} />
+                              </button>
+                            )}
+                            
+                            {booking.status === 'CHECKED_IN' && (
+                              <button
+                                className="p-2 text-gray-400 hover:text-gray-400"
+                                onClick={() => updateBookingStatus(booking.id, 'CHECKED_OUT')}
+                                title="Check Out"
+                              >
+                                <XCircle size={16} />
+                              </button>
+                            )}
+                            
+                            <button
+                              className="p-2 text-gray-400 hover:text-red-400"
+                              onClick={() => deleteBooking(booking.id)}
+                              title="Delete Booking"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between mt-4 px-6 py-3">
+              <div className="text-sm text-gray-400">
+                Page {page} of {totalPages} • {total} total bookings
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </Card>
         </div>
       </main>
     </div>
-  );
+  )
 }
-
