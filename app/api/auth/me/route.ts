@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
         phone,
         role,
         status,
-        emailverified
+        emailverified,
+        address,
+        city,
+        postalcode,
+        nationality
       FROM users
       WHERE id = $1
     `, [decoded.userId])

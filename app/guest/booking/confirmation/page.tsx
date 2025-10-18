@@ -38,6 +38,20 @@ interface Booking {
       numberOfBeds: number
       roomSize: number
       viewType: string
+      images?: Array<{
+        id: string
+        url: string
+        caption: string
+        altText: string
+        isPrimary: boolean
+        order: number
+      }>
+      amenities?: Array<{
+        id: string
+        name: string
+        icon: string
+        category: string
+      }>
     }
     branch: {
       id: string
@@ -78,7 +92,7 @@ export default function BookingConfirmationPage() {
         throw new Error(result.error || 'Failed to fetch booking')
       }
 
-      setBooking(result.data)
+      setBooking(result.booking)
     } catch (err: any) {
       setError(err.message || 'Failed to load booking details')
     } finally {
@@ -252,8 +266,16 @@ export default function BookingConfirmationPage() {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Room Details</h2>
               
               <div className="flex items-start space-x-4">
-                <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
-                  <span className="text-gray-500 text-2xl">🏨</span>
+                <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
+                  {booking.room.roomType.images?.[0] ? (
+                    <img 
+                      src={booking.room.roomType.images[0].url} 
+                      alt={booking.room.roomType.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-gray-500 text-2xl">🏨</span>
+                  )}
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-gray-900">{booking.room.roomType.name}</h3>

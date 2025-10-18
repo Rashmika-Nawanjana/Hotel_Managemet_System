@@ -323,6 +323,22 @@ export default function SearchRoomsPage() {
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
                     <span className="text-sm font-semibold text-gray-800">{room.roomSize} sqm</span>
                   </div>
+                  {room.availableRooms !== undefined && (
+                    <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-semibold ${
+                      room.availableRooms > 5 
+                        ? 'bg-green-500 text-white' 
+                        : room.availableRooms > 2 
+                        ? 'bg-yellow-500 text-white'
+                        : 'bg-red-500 text-white'
+                    }`}>
+                      {room.availableRooms > 5 
+                        ? `${room.availableRooms} rooms available`
+                        : room.availableRooms > 2 
+                        ? `Only ${room.availableRooms} left`
+                        : `Only ${room.availableRooms} left!`
+                      }
+                    </div>
+                  )}
                 </div>
                 
                 <div className="md:w-3/5 p-6">

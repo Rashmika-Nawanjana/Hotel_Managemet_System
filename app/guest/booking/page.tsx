@@ -52,10 +52,10 @@ export default function BookingPage() {
   const guests = searchParams.get('guests')
 
   const [roomType, setRoomType] = useState<RoomType | null>(null)
-  const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [sandboxMode, setSandboxMode] = useState(false)
 
   const [formData, setFormData] = useState({
     checkInDate: checkIn || '',
@@ -88,28 +88,70 @@ export default function BookingPage() {
     try {
       setLoading(true)
       
-      // Fetch branches
-      const branchesRes = await fetch('/api/branches')
-      const branchesData = await branchesRes.json()
-      if (branchesRes.ok) {
-        setBranches(branchesData.branches || [])
-        if (branchesData.branches?.length > 0) {
-          setFormData(prev => ({ ...prev, branchId: branchesData.branches[0].id }))
+      // Fetch room type if roomId is provided
+      if (roomId) {
+        // Use the main rooms API and filter for the specific room type
+        const roomRes = await fetch('/api/rooms')
+        const roomData = await roomRes.json()
+        if (roomRes.ok && roomData.roomTypes) {
+          const selectedRoomType = roomData.roomTypes.find((room: any) => room.id === roomId)
+          if (selectedRoomType) {
+            setRoomType(selectedRoomType)
+            setFormData(prev => ({ 
+              ...prev, 
+              roomTypeId: selectedRoomType.id,
+              branchId: selectedRoomType.branch?.id || prev.branchId
+            }))
+          } else {
+            setError(`Room not found: Invalid room ID`)
+          }
+        } else {
+          setError(`Failed to load room data: ${roomData.error || 'Unknown error'}`)
         }
       }
 
-      // Fetch room type if roomId is provided
-      if (roomId) {
-        const roomRes = await fetch(`/api/rooms/${roomId}`)
-        const roomData = await roomRes.json()
-        if (roomRes.ok) {
-          setRoomType(roomData.roomType)
-          setFormData(prev => ({ 
-            ...prev, 
-            roomTypeId: roomData.roomType.id,
-            branchId: roomData.roomType.branch?.id || prev.branchId
+      // Try to get user info from localStorage, session, or API
+      try {
+        // First try localStorage
+        const userInfo = localStorage.getItem('userInfo')
+        if (userInfo) {
+          const user = JSON.parse(userInfo)
+          setFormData(prev => ({
+            ...prev,
+            firstName: user.firstName || '',
+            lastName: user.lastName || '',
+            email: user.email || '',
+            phone: user.phone || '',
+            billingAddress: user.address || '',
+            billingCity: user.city || '',
+            billingPostalCode: user.postalCode || '',
+            billingCountry: user.nationality || ''
           }))
+        } else {
+          // Try to fetch user info from API
+          const userRes = await fetch('/api/auth/me', {
+            credentials: 'include'
+          })
+          if (userRes.ok) {
+            const userData = await userRes.json()
+            if (userData.user) {
+              setFormData(prev => ({
+                ...prev,
+                firstName: userData.user.firstname || '',
+                lastName: userData.user.lastname || '',
+                email: userData.user.email || '',
+                phone: userData.user.phone || '',
+                billingAddress: userData.user.address || '',
+                billingCity: userData.user.city || '',
+                billingPostalCode: userData.user.postalcode || '',
+                billingCountry: userData.user.nationality || ''
+              }))
+            }
+          }
         }
+      } catch (err) {
+        // User info not available, continue with empty form
+        console.log('Could not fetch user info:', err)
       }
     } catch (err) {
       setError('Failed to load booking data')
@@ -121,6 +163,37 @@ export default function BookingPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const toggleSandboxMode = () => {
+    setSandboxMode(!sandboxMode)
+    if (!sandboxMode) {
+      // Fill with dummy data
+      setFormData(prev => ({
+        ...prev,
+        cardNumber: '4111 1111 1111 1111',
+        cardExpiry: '12/25',
+        cardCvv: '123',
+        cardName: 'Test User',
+        billingAddress: '123 Test Street',
+        billingCity: 'Test City',
+        billingPostalCode: '12345',
+        billingCountry: 'Test Country'
+      }))
+    } else {
+      // Clear dummy data
+      setFormData(prev => ({
+        ...prev,
+        cardNumber: '',
+        cardExpiry: '',
+        cardCvv: '',
+        cardName: '',
+        billingAddress: '',
+        billingCity: '',
+        billingPostalCode: '',
+        billingCountry: ''
+      }))
+    }
   }
 
   const calculateTotalPrice = () => {
@@ -141,7 +214,7 @@ export default function BookingPage() {
     try {
       // Validate required fields
       const requiredFields = [
-        'checkInDate', 'checkOutDate', 'branchId', 'roomTypeId',
+        'checkInDate', 'checkOutDate', 'roomTypeId',
         'firstName', 'lastName', 'email', 'phone',
         'cardNumber', 'cardExpiry', 'cardCvv', 'cardName',
         'billingAddress', 'billingCity', 'billingPostalCode', 'billingCountry'
@@ -217,6 +290,7 @@ export default function BookingPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading booking form...</p>
+          {roomId && <p className="text-sm text-gray-500 mt-2">Fetching room details and your information</p>}
         </div>
       </div>
     )
@@ -233,11 +307,11 @@ export default function BookingPage() {
                 <span className="text-white font-bold text-xl">SN</span>
               </div>
               <div>
-                <span className="text-xl font-bold text-gray-800">Sky Nest</span>
+              <span className="text-xl font-bold text-gray-800">Sky Nest</span>
                 <p className="text-xs text-gray-500 -mt-1">Book Your Stay</p>
               </div>
             </Link>
-            
+
             <div className="flex items-center space-x-4">
               <Link href="/guest/my-bookings" className="text-gray-600 hover:text-blue-600 transition">My Bookings</Link>
               <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Dashboard</Link>
@@ -257,8 +331,29 @@ export default function BookingPage() {
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+            {/* Sandbox Mode Toggle */}
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-yellow-900">Testing Mode</h3>
+                  <p className="text-sm text-yellow-800">Enable sandbox mode to use dummy credit card data for testing</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleSandboxMode}
+                  className={`px-4 py-2 rounded-lg font-medium transition ${
+                    sandboxMode 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  }`}
+                >
+                  {sandboxMode ? 'Disable Sandbox' : 'Enable Sandbox'}
+                </button>
               </div>
-            )}
+            </div>
 
             <div className="grid lg:grid-cols-2 gap-8">
               {/* Left Column - Booking Details */}
@@ -269,129 +364,141 @@ export default function BookingPage() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Check-in Date</label>
-                      <input
-                        type="date"
+                  <input
+                    type="date"
                         name="checkInDate"
                         value={formData.checkInDate}
                         onChange={handleInputChange}
-                        min={new Date().toISOString().split('T')[0]}
+                    min={new Date().toISOString().split('T')[0]}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                    </div>
-                    <div>
+                    required
+                  />
+                </div>
+                <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Check-out Date</label>
-                      <input
-                        type="date"
+                  <input
+                    type="date"
                         name="checkOutDate"
                         value={formData.checkOutDate}
                         onChange={handleInputChange}
                         min={formData.checkInDate || new Date().toISOString().split('T')[0]}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                    </div>
-                  </div>
+                    required
+                  />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
-                      <select
-                        name="numberOfGuests"
-                        value={formData.numberOfGuests}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      >
-                        {[1,2,3,4,5,6].map(num => (
-                          <option key={num} value={num}>{num} guest{num > 1 ? 's' : ''}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
-                      <select
-                        name="branchId"
-                        value={formData.branchId}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      >
-                        <option value="">Select Branch</option>
-                        {branches.map(branch => (
-                          <option key={branch.id} value={branch.id}>{branch.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+              <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
+                <select
+                      name="numberOfGuests"
+                      value={formData.numberOfGuests}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    >
+                      {[1,2,3,4,5,6].map(num => (
+                        <option key={num} value={num}>{num} guest{num > 1 ? 's' : ''}</option>
+                  ))}
+                </select>
+              </div>
 
-                  <div>
+              <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
-                    <textarea
+                <textarea
                       name="specialRequests"
                       value={formData.specialRequests}
                       onChange={handleInputChange}
-                      rows={3}
+                  rows={3}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Any special requests or notes..."
-                    />
-                  </div>
-                </div>
+                />
+              </div>
+            </div>
 
-                {/* Guest Information */}
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Guest Information</h2>
-                  
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                      <input
-                        type="text"
-                        name="firstName"
-                        value={formData.firstName}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-                      <input
-                        type="text"
-                        name="lastName"
-                        value={formData.lastName}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                    </div>
-                  </div>
+                {/* Guest Information - Only show if not pre-populated */}
+                {(!formData.firstName || !formData.lastName || !formData.email || !formData.phone) && (
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Guest Information</h2>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                        <input
+                          type="text"
+                          name="firstName"
+                          value={formData.firstName}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                        <input
+                          type="text"
+                          name="lastName"
+                          value={formData.lastName}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+            </div>
+          </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <input
+                          type="email"
+                          name="email"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* Show guest info summary if pre-populated */}
+                {(formData.firstName && formData.lastName && formData.email && formData.phone) && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-green-900 mb-2">Guest Information</h3>
+                    <div className="text-sm text-green-800">
+                      <p><strong>Name:</strong> {formData.firstName} {formData.lastName}</p>
+                      <p><strong>Email:</strong> {formData.email}</p>
+                      <p><strong>Phone:</strong> {formData.phone}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({
+                          ...prev,
+                          firstName: '',
+                          lastName: '',
+                          email: '',
+                          phone: ''
+                        }))
+                      }}
+                      className="mt-2 text-xs text-green-600 hover:text-green-700 underline"
+                    >
+                      Edit guest information
+                    </button>
+                  </div>
+                )}
 
                 {/* Credit Card Information */}
                 <div>
@@ -506,7 +613,7 @@ export default function BookingPage() {
               {/* Right Column - Booking Summary */}
               <div className="space-y-6">
                 <div className="bg-gray-50 rounded-lg p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Booking Summary</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Selected Room</h2>
                   
                   {roomType ? (
                     <div className="space-y-4">
@@ -522,6 +629,7 @@ export default function BookingPage() {
                           <h3 className="font-semibold text-gray-900">{roomType.name}</h3>
                           <p className="text-sm text-gray-600">{roomType.branch?.name}</p>
                           <p className="text-sm text-gray-600">{roomType.bedType} • {roomType.maxOccupancy} guests</p>
+                          <p className="text-sm text-gray-600">{roomType.roomSize} sqm</p>
                         </div>
                       </div>
 
@@ -561,7 +669,18 @@ export default function BookingPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-gray-600">Select a room type to see pricing</p>
+                    <div className="text-center py-8">
+                      <span className="text-4xl mb-2 block">🏨</span>
+                      <p className="text-gray-600">
+                        {roomId ? 'Room not found or invalid room ID' : 'Loading room details...'}
+                      </p>
+                      <Link 
+                        href="/guest/search-rooms"
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      >
+                        Browse rooms
+                      </Link>
+                    </div>
                   )}
                 </div>
 
@@ -575,19 +694,34 @@ export default function BookingPage() {
                   </ul>
                 </div>
 
-                <button
-                  type="submit"
+              <button
+                type="submit"
                   disabled={submitting || !roomType || !formData.checkInDate || !formData.checkOutDate}
                   className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   {submitting ? 'Creating Booking...' : 'Complete Booking'}
                 </button>
+                
+                {!roomType && roomId && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <span className="font-semibold">Loading room details...</span> Please wait while we fetch the room information.
+                    </p>
+                  </div>
+                )}
+                
+                {sandboxMode && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800">
+                      <span className="font-semibold">Sandbox Mode Active:</span> Using test credit card data. No real payment will be processed.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </form>
-        </div>
+          </div>
       </div>
     </div>
   )
-}
 }

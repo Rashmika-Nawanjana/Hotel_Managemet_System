@@ -88,7 +88,8 @@ export async function GET(request: NextRequest) {
         (
           SELECT COUNT(*)::int
           FROM "Room" r
-          WHERE r."roomTypeId" = rt.id
+          WHERE r."roomTypeId" = rt.id 
+            AND r.status = 'AVAILABLE'
         ) as "availableRooms"
       FROM "RoomType" rt
       LEFT JOIN "Branch" b ON rt."branchId" = b.id

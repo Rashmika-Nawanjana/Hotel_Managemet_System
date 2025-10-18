@@ -47,7 +47,13 @@ export async function GET(request: NextRequest) {
           FROM "RoomTypeAmenity" rta
           JOIN "Amenities" a ON rta."amenityId" = a.id
           WHERE rta."roomTypeId" = rt.id
-        ), '[]'::json) as amenities
+        ), '[]'::json) as amenities,
+        (
+          SELECT COUNT(*)::int
+          FROM "Room" r
+          WHERE r."roomTypeId" = rt.id 
+            AND r.status = 'AVAILABLE'
+        ) as "availableRooms"
       FROM "RoomType" rt
       LEFT JOIN "Branch" b ON rt."branchId" = b.id
       WHERE rt.status = 'active'
