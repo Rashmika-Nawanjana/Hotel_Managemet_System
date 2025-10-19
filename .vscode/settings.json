@@ -9,6 +9,16 @@
             "name": "skynest_hotel",
             "database": "skynest_hotel",
             "username": "skynest_user"
+        },
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "HMS",
+            "database": "skynest_hotel",
+            "username": "skynest_user"
         }
     ]
 }

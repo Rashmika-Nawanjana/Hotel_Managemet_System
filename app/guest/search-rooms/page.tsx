@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { RefreshCw } from 'lucide-react'
 
 interface RoomType {
   id: string
@@ -67,6 +68,29 @@ export default function SearchRoomsPage() {
       fetchAvailableRooms()
     }
   }, [filters, branches, roomTypes])
+
+  // Refresh data when page becomes visible (user returns from booking)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && (branches.length > 0 || roomTypes.length > 0)) {
+        fetchAvailableRooms()
+      }
+    }
+
+    const handleFocus = () => {
+      if (branches.length > 0 || roomTypes.length > 0) {
+        fetchAvailableRooms()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [branches.length, roomTypes.length])
 
   const fetchInitialData = async () => {
     try {
@@ -187,6 +211,14 @@ export default function SearchRoomsPage() {
             </Link>
             
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => fetchAvailableRooms()}
+                className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 transition"
+                title="Refresh room availability"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Refresh</span>
+              </button>
               <Link href="/guest/my-bookings" className="text-gray-600 hover:text-blue-600 transition">My Bookings</Link>
               <Link href="/guest/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Dashboard</Link>
             </div>
@@ -312,26 +344,41 @@ export default function SearchRoomsPage() {
         {/* Room Cards Grid */}
         <div className="grid lg:grid-cols-2 gap-6">
           {sortedRooms.map(room => (
-            <div key={room.id} className="bg-white rounded-xl shadow-md hover:shadow-xl transition duration-300 overflow-hidden">
+            <div key={room.id} className={`bg-white rounded-xl shadow-md hover:shadow-xl transition duration-300 overflow-hidden ${
+              room.availableRooms === 0 ? 'opacity-75' : ''
+            }`}>
               <div className="md:flex">
                 <div className="md:w-2/5 relative">
                   <img 
                     src={room.images?.[0]?.url || 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'} 
                     alt={room.name}
-                    className="w-full h-64 md:h-full object-cover"
+                    className={`w-full h-64 md:h-full object-cover ${
+                      room.availableRooms === 0 ? 'grayscale' : ''
+                    }`}
                   />
+                  {room.availableRooms === 0 && (
+                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                      <div className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold">
+                        Fully Booked
+                      </div>
+                    </div>
+                  )}
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
                     <span className="text-sm font-semibold text-gray-800">{room.roomSize} sqm</span>
                   </div>
                   {room.availableRooms !== undefined && (
                     <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-semibold ${
-                      room.availableRooms > 5 
+                      room.availableRooms === 0
+                        ? 'bg-red-600 text-white'
+                        : room.availableRooms > 5 
                         ? 'bg-green-500 text-white' 
                         : room.availableRooms > 2 
                         ? 'bg-yellow-500 text-white'
                         : 'bg-red-500 text-white'
                     }`}>
-                      {room.availableRooms > 5 
+                      {room.availableRooms === 0
+                        ? 'Fully Booked'
+                        : room.availableRooms > 5 
                         ? `${room.availableRooms} rooms available`
                         : room.availableRooms > 2 
                         ? `Only ${room.availableRooms} left`
@@ -393,12 +440,22 @@ export default function SearchRoomsPage() {
                       >
                         View Details
                       </Link>
-                      <Link 
-                        href={`/guest/booking?roomId=${room.id}&checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-                      >
-                        Book Now
-                      </Link>
+                      {room.availableRooms > 0 ? (
+                        <Link 
+                          href={`/guest/booking?roomId=${room.id}&checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                        >
+                          Book Now
+                        </Link>
+                      ) : (
+                        <button 
+                          disabled
+                          className="px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed font-medium"
+                          title="This room type is fully booked for the selected dates"
+                        >
+                          Fully Booked
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

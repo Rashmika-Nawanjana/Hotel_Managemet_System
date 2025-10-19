@@ -82,172 +82,215 @@ export async function POST(request: NextRequest) {
     // Generate booking reference
     const bookingReference = `SN${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`
 
-    // Find an available room of this type in the selected branch
-    const availableRoom = await queryOne(
-      `SELECT r.id 
-       FROM "Room" r 
-       WHERE r."roomTypeId" = $1 
-         AND r."branchId" = $2 
-         AND r.status = 'AVAILABLE'
-         AND r.id NOT IN (
+    // Start transaction to prevent race conditions
+    await execute('BEGIN')
+
+    try {
+      // Find an available room of this type in the selected branch with row-level locking
+      const availableRoom = await queryOne(
+        `SELECT r.id 
+         FROM "Room" r 
+         WHERE r."roomTypeId" = $1 
+           AND r."branchId" = $2 
+           AND r.status = 'AVAILABLE'
+           AND r.id NOT IN (
            SELECT b."roomId" 
            FROM "Booking" b 
            WHERE b."roomId" = r.id 
-             AND b.status IN ('CONFIRMED', 'CHECKED_IN')
+             AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
              AND (
                (b."checkInDate" <= $3 AND b."checkOutDate" > $3) OR
                (b."checkInDate" < $4 AND b."checkOutDate" >= $4) OR
                (b."checkInDate" >= $3 AND b."checkOutDate" <= $4)
              )
-         )
-       LIMIT 1`,
-      [roomTypeId, branchId, checkInDate, checkOutDate]
-    )
+           )
+         ORDER BY r.id
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED`,
+        [roomTypeId, branchId, checkInDate, checkOutDate]
+      )
 
-    if (!availableRoom) {
-      return NextResponse.json({ 
-        error: 'No rooms available for the selected dates. Please try different dates.' 
-      }, { status: 400 })
-    }
+      if (!availableRoom) {
+        await execute('ROLLBACK')
+        return NextResponse.json({ 
+          error: 'No rooms available for the selected dates. Please try different dates or room type.' 
+        }, { status: 400 })
+      }
 
-    // Create booking
-    const bookingId = await queryOne(
-      `INSERT INTO "Booking" (
-        id, "bookingReference", "userId", "roomId", "checkInDate", "checkOutDate",
-        "numberOfGuests", "totalPrice", status, "paymentStatus", "specialRequests",
-        "createdAt", "updatedAt"
-      ) VALUES (
-        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'PENDING', 'PENDING', $8, NOW(), NOW()
-      ) RETURNING id`,
-      [
-        bookingReference,
-        decoded.userId,
-        availableRoom.id,
-        checkInDate,
-        checkOutDate,
-        numberOfGuests,
-        totalPrice,
-        specialRequests || null
-      ]
-    )
+      // Double-check room is still available (additional safety)
+      const roomStillAvailable = await queryOne(
+        `SELECT r.id, r.status
+         FROM "Room" r 
+         WHERE r.id = $1 
+           AND r.status = 'AVAILABLE'
+           AND r.id NOT IN (
+             SELECT b."roomId" 
+             FROM "Booking" b 
+             WHERE b."roomId" = r.id 
+               AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+               AND (
+                 (b."checkInDate" <= $2 AND b."checkOutDate" > $2) OR
+                 (b."checkInDate" < $3 AND b."checkOutDate" >= $3) OR
+                 (b."checkInDate" >= $2 AND b."checkOutDate" <= $3)
+               )
+           )`,
+        [availableRoom.id, checkInDate, checkOutDate]
+      )
 
-    // Store payment information (encrypted in real implementation)
-    if (paymentInfo) {
-      await execute(
-        `INSERT INTO "PaymentInfo" (
-          id, "bookingId", "cardNumber", "cardExpiry", "cardCvv", "cardName",
-          "billingAddress", "billingCity", "billingPostalCode", "billingCountry",
-          "createdAt"
+      if (!roomStillAvailable) {
+        await execute('ROLLBACK')
+        return NextResponse.json({ 
+          error: 'Room became unavailable during booking process. Please try again.' 
+        }, { status: 409 })
+      }
+
+      // Create booking
+      const bookingId = await queryOne(
+        `INSERT INTO "Booking" (
+          id, "bookingReference", "userId", "roomId", "checkInDate", "checkOutDate",
+          "numberOfGuests", "totalPrice", status, "paymentStatus", "specialRequests",
+          "createdAt", "updatedAt"
         ) VALUES (
-          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
-        )`,
+          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'PENDING', 'PENDING', $8, NOW(), NOW()
+        ) RETURNING id`,
         [
-          bookingId.id,
-          paymentInfo.cardNumber,
-          paymentInfo.cardExpiry,
-          paymentInfo.cardCvv,
-          paymentInfo.cardName,
-          paymentInfo.billingAddress,
-          paymentInfo.billingCity,
-          paymentInfo.billingPostalCode,
-          paymentInfo.billingCountry
+          bookingReference,
+          decoded.userId,
+          availableRoom.id,
+          checkInDate,
+          checkOutDate,
+          numberOfGuests,
+          totalPrice,
+          specialRequests || null
         ]
       )
-    }
 
-    // Update guest information if provided
-    if (firstName || lastName || email || phone) {
-      const updateFields = []
-      const updateValues = []
-      let paramIndex = 1
-
-      if (firstName) {
-        updateFields.push(`firstname = $${paramIndex++}`)
-        updateValues.push(firstName)
-      }
-      if (lastName) {
-        updateFields.push(`lastname = $${paramIndex++}`)
-        updateValues.push(lastName)
-      }
-      if (email) {
-        updateFields.push(`email = $${paramIndex++}`)
-        updateValues.push(email)
-      }
-      if (phone) {
-        updateFields.push(`phone = $${paramIndex++}`)
-        updateValues.push(phone)
-      }
-
-      if (updateFields.length > 0) {
-        updateFields.push(`updatedat = NOW()`)
-        updateValues.push(decoded.userId)
-
+      // Store payment information (encrypted in real implementation)
+      if (paymentInfo) {
         await execute(
-          `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`,
-          updateValues
+          `INSERT INTO "PaymentInfo" (
+            id, "bookingId", "cardNumber", "cardExpiry", "cardCvv", "cardName",
+            "billingAddress", "billingCity", "billingPostalCode", "billingCountry",
+            "createdAt"
+          ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
+          )`,
+          [
+            bookingId.id,
+            paymentInfo.cardNumber,
+            paymentInfo.cardExpiry,
+            paymentInfo.cardCvv,
+            paymentInfo.cardName,
+            paymentInfo.billingAddress,
+            paymentInfo.billingCity,
+            paymentInfo.billingPostalCode,
+            paymentInfo.billingCountry
+          ]
         )
       }
-    }
 
-    // Fetch the created booking with full details
-    const booking = await queryOne(
-      `SELECT 
-        b.*,
-        json_build_object(
-          'id', u.id,
-          'firstName', u.firstname,
-          'lastName', u.lastname,
-          'email', u.email,
-          'phone', u.phone
-        ) as user,
-        json_build_object(
-          'id', r.id,
-          'roomNumber', r."roomNumber",
-          'floor', r.floor,
-          'status', r.status,
-          'roomType', json_build_object(
-            'id', rt.id,
-            'name', rt.name,
-            'slug', rt.slug,
-            'description', rt.description,
-            'basePrice', rt."basePrice",
-            'maxOccupancy', rt."maxOccupancy",
-            'bedType', rt."bedType",
-            'numberOfBeds', rt."numberOfBeds",
-            'roomSize', rt."roomSize",
-            'viewType', rt."viewType"
-          ),
-          'branch', json_build_object(
-            'id', br.id,
-            'name', br.name,
-            'location', br.location,
-            'address', br.address
+      // Update guest information if provided
+      if (firstName || lastName || email || phone) {
+        const updateFields = []
+        const updateValues = []
+        let paramIndex = 1
+
+        if (firstName) {
+          updateFields.push(`firstname = $${paramIndex++}`)
+          updateValues.push(firstName)
+        }
+        if (lastName) {
+          updateFields.push(`lastname = $${paramIndex++}`)
+          updateValues.push(lastName)
+        }
+        if (email) {
+          updateFields.push(`email = $${paramIndex++}`)
+          updateValues.push(email)
+        }
+        if (phone) {
+          updateFields.push(`phone = $${paramIndex++}`)
+          updateValues.push(phone)
+        }
+
+        if (updateFields.length > 0) {
+          updateFields.push(`updatedat = NOW()`)
+          updateValues.push(decoded.userId)
+
+          await execute(
+            `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramIndex}`,
+            updateValues
           )
-        ) as room
-      FROM "Booking" b
-      LEFT JOIN users u ON b."userId" = u.id
-      LEFT JOIN "Room" r ON b."roomId" = r.id
-      LEFT JOIN "RoomType" rt ON r."roomTypeId" = rt.id
-      LEFT JOIN "Branch" br ON r."branchId" = br.id
-      WHERE b.id = $1`,
-      [bookingId.id]
-    )
-
-    return NextResponse.json({
-      success: true,
-      message: 'Booking created successfully',
-      booking: {
-        ...booking,
-        totalPrice: parseFloat(booking.totalPrice.toString()),
-        room: {
-          ...booking.room,
-          roomType: {
-            ...booking.room.roomType,
-            basePrice: parseFloat(booking.room.roomType.basePrice.toString())
-          }
         }
       }
-    }, { status: 201 })
+
+      // Fetch the created booking with full details
+      const booking = await queryOne(
+        `SELECT 
+          b.*,
+          json_build_object(
+            'id', u.id,
+            'firstName', u.firstname,
+            'lastName', u.lastname,
+            'email', u.email,
+            'phone', u.phone
+          ) as user,
+          json_build_object(
+            'id', r.id,
+            'roomNumber', r."roomNumber",
+            'floor', r.floor,
+            'status', r.status,
+            'roomType', json_build_object(
+              'id', rt.id,
+              'name', rt.name,
+              'slug', rt.slug,
+              'description', rt.description,
+              'basePrice', rt."basePrice",
+              'maxOccupancy', rt."maxOccupancy",
+              'bedType', rt."bedType",
+              'numberOfBeds', rt."numberOfBeds",
+              'roomSize', rt."roomSize",
+              'viewType', rt."viewType"
+            ),
+            'branch', json_build_object(
+              'id', br.id,
+              'name', br.name,
+              'location', br.location,
+              'address', br.address
+            )
+          ) as room
+        FROM "Booking" b
+        LEFT JOIN users u ON b."userId" = u.id
+        LEFT JOIN "Room" r ON b."roomId" = r.id
+        LEFT JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+        LEFT JOIN "Branch" br ON r."branchId" = br.id
+        WHERE b.id = $1`,
+        [bookingId.id]
+      )
+
+      // Commit transaction
+      await execute('COMMIT')
+
+      return NextResponse.json({
+        success: true,
+        message: 'Booking created successfully',
+        booking: {
+          ...booking,
+          totalPrice: parseFloat(booking.totalPrice.toString()),
+          room: {
+            ...booking.room,
+            roomType: {
+              ...booking.room.roomType,
+              basePrice: parseFloat(booking.room.roomType.basePrice.toString())
+            }
+          }
+        }
+      }, { status: 201 })
+
+    } catch (error) {
+      // Rollback transaction on any error
+      await execute('ROLLBACK')
+      throw error
+    }
 
   } catch (error) {
     console.error('Error creating booking:', error)

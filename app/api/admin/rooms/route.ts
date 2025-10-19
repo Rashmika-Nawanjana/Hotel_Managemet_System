@@ -26,6 +26,27 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get query parameters
+    const { searchParams } = new URL(request.url)
+    const nameFilter = searchParams.get('name')
+    const branchFilter = searchParams.get('branchId')
+
+    // Build query with optional filters
+    let whereClause = ''
+    let queryParams: any[] = []
+    let paramCount = 0
+    
+    if (nameFilter && branchFilter) {
+      whereClause = 'WHERE LOWER(rt.name) = LOWER($1) AND rt."branchId" = $2'
+      queryParams = [nameFilter.trim(), branchFilter]
+    } else if (nameFilter) {
+      whereClause = 'WHERE LOWER(rt.name) = LOWER($1)'
+      queryParams = [nameFilter.trim()]
+    } else if (branchFilter) {
+      whereClause = 'WHERE rt."branchId" = $1'
+      queryParams = [branchFilter]
+    }
+
     // Get all room types (including inactive) with related data
     const roomTypes = await query(`
       SELECT 
@@ -69,8 +90,9 @@ export async function GET(request: NextRequest) {
         ) as "availableRooms"
       FROM "RoomType" rt
       LEFT JOIN "Branch" b ON rt."branchId" = b.id
+      ${whereClause}
       ORDER BY rt."createdAt" DESC
-    `)
+    `, queryParams)
 
     console.log('📊 Fetched room types:', roomTypes.length)
 
@@ -164,15 +186,15 @@ export async function POST(request: NextRequest) {
     // Generate slug
     const slug = generateSlug(name)
 
-    // Check if slug already exists
+    // Check if room type with same name already exists in the same branch
     const existingRoomType = await queryOne(
-      'SELECT id FROM "RoomType" WHERE slug = $1',
-      [slug]
+      'SELECT id FROM "RoomType" WHERE LOWER(name) = LOWER($1) AND "branchId" = $2',
+      [name, branchId]
     )
 
     if (existingRoomType) {
       return NextResponse.json(
-        { error: 'A room type with this name already exists' },
+        { error: 'A room type with this name already exists in the selected branch' },
         { status: 400 }
       )
     }

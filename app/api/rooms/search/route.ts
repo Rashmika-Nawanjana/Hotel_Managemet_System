@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
     let queryParams: any[] = []
     let paramIndex = 1
 
-    // Base query for room types with availability
-    let baseQuery = `
+    // Build the main query with proper availability calculation
+    let mainQuery = `
       SELECT
         rt.id, rt.name, rt.slug, rt.description, rt."shortDescription",
         rt."basePrice", rt."maxOccupancy", rt."bedType", rt."numberOfBeds",
@@ -48,16 +48,47 @@ export async function GET(request: NextRequest) {
           JOIN "Amenities" a ON rta."amenityId" = a.id
           WHERE rta."roomTypeId" = rt.id
         ), '[]'::json) as amenities,
-        (
-          SELECT COUNT(*)::int
-          FROM "Room" r
-          WHERE r."roomTypeId" = rt.id 
-            AND r.status = 'AVAILABLE'
-        ) as "availableRooms"
+        -- Calculate available rooms for the specific dates
+        CASE 
+          WHEN $1 != '' AND $2 != '' THEN
+            (
+              SELECT COUNT(*)::int
+              FROM "Room" r
+              WHERE r."roomTypeId" = rt.id 
+                AND r.status = 'AVAILABLE'
+                AND r.id NOT IN (
+                  SELECT b."roomId" 
+                  FROM "Booking" b 
+                  WHERE b."roomId" = r.id 
+                    AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+                    AND (
+                      -- Check for date overlap: booking overlaps with requested dates
+                      (DATE(b."checkInDate") <= $2::date AND DATE(b."checkOutDate") > $1::date)
+                    )
+                )
+            )
+          ELSE
+            (
+              SELECT COUNT(*)::int
+              FROM "Room" r
+              WHERE r."roomTypeId" = rt.id 
+                AND r.status = 'AVAILABLE'
+            )
+        END as "availableRooms"
       FROM "RoomType" rt
       LEFT JOIN "Branch" b ON rt."branchId" = b.id
       WHERE rt.status = 'active'
     `
+
+    // Add check-in and check-out dates to parameters first
+    if (checkIn && checkOut) {
+      queryParams.push(checkIn, checkOut)
+      paramIndex += 2
+    } else {
+      // Use empty string instead of null to avoid PostgreSQL type inference issues
+      queryParams.push('', '')
+      paramIndex += 2
+    }
 
     // Filter by branch
     if (branchId) {
@@ -95,7 +126,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Filter by availability if dates are provided
+    // Only show room types that have available rooms for the requested dates
     if (checkIn && checkOut) {
       whereConditions.push(`
         EXISTS (
@@ -106,36 +137,56 @@ export async function GET(request: NextRequest) {
               SELECT b."roomId" 
               FROM "Booking" b 
               WHERE b."roomId" = r.id 
-                AND b.status IN ('CONFIRMED', 'CHECKED_IN')
+                AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
                 AND (
-                  (b."checkInDate" <= $${paramIndex} AND b."checkOutDate" > $${paramIndex}) OR
-                  (b."checkInDate" < $${paramIndex + 1} AND b."checkOutDate" >= $${paramIndex + 1}) OR
-                  (b."checkInDate" >= $${paramIndex} AND b."checkOutDate" <= $${paramIndex + 1})
+                  -- Check for date overlap: booking overlaps with requested dates
+                  (DATE(b."checkInDate") <= $2::date AND DATE(b."checkOutDate") > $1::date)
                 )
             )
         )
       `)
-      queryParams.push(checkIn, checkOut)
-      paramIndex += 2
     }
 
     // Add where conditions to query
     if (whereConditions.length > 0) {
-      baseQuery += ` AND ${whereConditions.join(' AND ')}`
+      mainQuery += ` AND ${whereConditions.join(' AND ')}`
     }
 
     // Add ordering
-    baseQuery += ` ORDER BY rt."basePrice" ASC`
+    mainQuery += ` ORDER BY rt."basePrice" ASC`
 
-    const roomTypes = await query(baseQuery, queryParams)
+    console.log('Room search query:', mainQuery)
+    console.log('Query params:', queryParams)
+    console.log('Check-in date:', checkIn, 'Check-out date:', checkOut)
+
+    const roomTypes = await query(mainQuery, queryParams)
 
     // Transform the data
     const transformedRoomTypes = roomTypes.map(roomType => ({
       ...roomType,
       basePrice: parseFloat(roomType.basePrice.toString()),
       images: roomType.images || [],
-      amenities: roomType.amenities || []
+      amenities: roomType.amenities || [],
+      availableRooms: parseInt(roomType.availableRooms) || 0
     }))
+
+    console.log('Found room types:', transformedRoomTypes.length)
+    console.log('Available rooms per type:', transformedRoomTypes.map(rt => ({ name: rt.name, available: rt.availableRooms })))
+    
+    // Debug: Check existing bookings for Standard Room
+    if (checkIn && checkOut) {
+      const debugQuery = `
+        SELECT b.id, b."bookingReference", b."checkInDate", b."checkOutDate", b.status, r."roomNumber", rt.name as "roomTypeName"
+        FROM "Booking" b
+        JOIN "Room" r ON b."roomId" = r.id
+        JOIN "RoomType" rt ON r."roomTypeId" = rt.id
+        WHERE rt.name = 'Standard Room'
+          AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+          AND (DATE(b."checkInDate") <= $1::date AND DATE(b."checkOutDate") > $2::date)
+      `
+      const debugBookings = await query(debugQuery, [checkOut, checkIn])
+      console.log('Debug - Existing bookings for Standard Room:', debugBookings)
+    }
 
     return NextResponse.json({
       success: true,

@@ -56,6 +56,8 @@ export default function BookingPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [sandboxMode, setSandboxMode] = useState(false)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState('')
 
   const [formData, setFormData] = useState({
     checkInDate: checkIn || '',
@@ -83,6 +85,15 @@ export default function BookingPage() {
   useEffect(() => {
     fetchInitialData()
   }, [])
+
+  // Check availability when dates or guests change
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      checkRoomAvailability()
+    }, 500) // Debounce for 500ms
+
+    return () => clearTimeout(timeoutId)
+  }, [formData.checkInDate, formData.checkOutDate, formData.numberOfGuests])
 
   const fetchInitialData = async () => {
     try {
@@ -206,6 +217,47 @@ export default function BookingPage() {
     return nights * roomType.basePrice
   }
 
+  const checkRoomAvailability = async () => {
+    if (!formData.checkInDate || !formData.checkOutDate || !formData.roomTypeId) {
+      setAvailabilityError('')
+      return
+    }
+
+    try {
+      setCheckingAvailability(true)
+      setAvailabilityError('')
+
+      const params = new URLSearchParams({
+        roomType: formData.roomTypeId,
+        checkIn: formData.checkInDate,
+        checkOut: formData.checkOutDate,
+        guests: formData.numberOfGuests.toString()
+      })
+
+      const response = await fetch(`/api/rooms/search?${params.toString()}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to check availability')
+      }
+
+      const availableRooms = data.roomTypes || []
+      const selectedRoom = availableRooms.find((room: any) => room.id === formData.roomTypeId)
+
+      if (!selectedRoom || selectedRoom.availableRooms === 0) {
+        setAvailabilityError('This room type is no longer available for the selected dates. Please choose different dates or room type.')
+      } else if (selectedRoom.availableRooms < 3) {
+        setAvailabilityError(`Only ${selectedRoom.availableRooms} room(s) left! Book quickly to secure your stay.`)
+      } else {
+        setAvailabilityError('')
+      }
+    } catch (err: any) {
+      setAvailabilityError('Unable to verify room availability. Please try again.')
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -241,6 +293,14 @@ export default function BookingPage() {
 
       if (checkOut <= checkIn) {
         setError('Check-out date must be after check-in date')
+        setSubmitting(false)
+        return
+      }
+
+      // Final availability check before submission
+      await checkRoomAvailability()
+      if (availabilityError && availabilityError.includes('no longer available')) {
+        setError(availabilityError)
         setSubmitting(false)
         return
       }
@@ -331,8 +391,30 @@ export default function BookingPage() {
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600">{error}</p>
-          </div>
-        )}
+              </div>
+            )}
+
+            {/* Availability Status */}
+            {checkingAvailability && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  <p className="text-blue-600">Checking room availability...</p>
+                </div>
+              </div>
+            )}
+
+            {availabilityError && !checkingAvailability && (
+              <div className={`mb-6 p-4 border rounded-lg ${
+                availabilityError.includes('no longer available') 
+                  ? 'bg-red-50 border-red-200' 
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
+                <p className={availabilityError.includes('no longer available') ? 'text-red-600' : 'text-yellow-600'}>
+                  {availabilityError}
+                </p>
+              </div>
+            )}
 
             {/* Sandbox Mode Toggle */}
             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -696,10 +778,10 @@ export default function BookingPage() {
 
               <button
                 type="submit"
-                  disabled={submitting || !roomType || !formData.checkInDate || !formData.checkOutDate}
+                  disabled={submitting || !roomType || !formData.checkInDate || !formData.checkOutDate || checkingAvailability || (availabilityError && availabilityError.includes('no longer available'))}
                   className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
-                  {submitting ? 'Creating Booking...' : 'Complete Booking'}
+                  {submitting ? 'Creating Booking...' : checkingAvailability ? 'Checking Availability...' : 'Complete Booking'}
                 </button>
                 
                 {!roomType && roomId && (

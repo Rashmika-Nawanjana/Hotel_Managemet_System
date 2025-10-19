@@ -24,6 +24,7 @@ export default function CreateRoomTypePage() {
   const [amenities, setAmenities] = useState<Amenity[]>([])
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -72,8 +73,39 @@ export default function CreateRoomTypePage() {
     }
   }
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = async (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    
+    // Clear error when user starts typing
+    if (error) {
+      setError('')
+    }
+    
+    // Check for duplicates when name changes and branch is selected
+    if (field === 'name' && typeof value === 'string' && formData.branchId) {
+      const isDuplicate = await checkDuplicateName(value, formData.branchId)
+      if (isDuplicate) {
+        setError('A room type with this name already exists in the selected branch. Please choose a different name or select a different branch.')
+      }
+    }
+  }
+
+  // Check for duplicates when branch changes
+  const handleBranchChange = async (branchId: string) => {
+    setFormData((prev) => ({ ...prev, branchId }))
+    
+    // Clear error when branch changes
+    if (error) {
+      setError('')
+    }
+    
+    // Check for duplicates if name is already entered
+    if (formData.name.trim() && branchId) {
+      const isDuplicate = await checkDuplicateName(formData.name, branchId)
+      if (isDuplicate) {
+        setError('A room type with this name already exists in the selected branch. Please choose a different name or select a different branch.')
+      }
+    }
   }
 
   const handleAmenityToggle = (amenityId: string) => {
@@ -96,7 +128,25 @@ export default function CreateRoomTypePage() {
     setImageUrls((prev) => prev.map((url, i) => (i === index ? value : url)))
   }
 
-  const validateForm = () => {
+  const checkDuplicateName = async (name: string, branchId: string) => {
+    if (!name.trim() || !branchId) return false
+    
+    try {
+      setIsCheckingDuplicate(true)
+      const response = await fetch(`/api/admin/rooms?name=${encodeURIComponent(name.trim())}&branchId=${branchId}`)
+      if (response.ok) {
+        const data = await response.json()
+        return data.data && data.data.length > 0
+      }
+    } catch (err) {
+      console.error('Error checking duplicate name:', err)
+    } finally {
+      setIsCheckingDuplicate(false)
+    }
+    return false
+  }
+
+  const validateForm = async () => {
     if (!formData.name.trim()) return 'Room name is required'
     if (!formData.description.trim()) return 'Description is required'
     if (!formData.basePrice || parseFloat(formData.basePrice) <= 0)
@@ -106,6 +156,13 @@ export default function CreateRoomTypePage() {
     if (!formData.roomSize || parseInt(formData.roomSize) <= 0)
       return 'Valid room size is required'
     if (!formData.branchId) return 'Please select a branch'
+    
+    // Check for duplicate name within the same branch
+    const isDuplicate = await checkDuplicateName(formData.name, formData.branchId)
+    if (isDuplicate) {
+      return 'A room type with this name already exists in the selected branch. Please choose a different name or select a different branch.'
+    }
+    
     return null
   }
 
@@ -114,7 +171,7 @@ export default function CreateRoomTypePage() {
     setIsLoading(true)
     setError('')
 
-    const validationError = validateForm()
+    const validationError = await validateForm()
     if (validationError) {
       setError(validationError)
       setIsLoading(false)
@@ -201,8 +258,25 @@ export default function CreateRoomTypePage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start">
+            <span className="text-red-500 mr-3 text-xl">⚠️</span>
+            <div>
+              <p className="text-red-800 font-semibold mb-1">Error</p>
+              <p className="text-red-700">{error}</p>
+              {error.includes('already exists') && (
+                <div className="mt-3 p-3 bg-red-100 rounded-lg">
+                  <p className="text-red-800 text-sm font-medium mb-2">💡 Suggestions:</p>
+                  <ul className="text-red-700 text-sm space-y-1">
+                    <li>• Try adding a location identifier to make it unique (e.g., "Deluxe Suite - Ocean View")</li>
+                    <li>• Add a number or version (e.g., "Deluxe Suite v2")</li>
+                    <li>• Use a different descriptive term (e.g., "Premium Suite" instead of "Deluxe Suite")</li>
+                    <li>• Select a different branch if this room type should exist in multiple locations</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -227,6 +301,12 @@ export default function CreateRoomTypePage() {
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Room Type Name *
+                {isCheckingDuplicate && (
+                  <span className="ml-2 text-blue-600 text-sm font-normal">
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full mr-1"></span>
+                    Checking availability...
+                  </span>
+                )}
               </label>
               <input
                 type="text"
@@ -235,6 +315,7 @@ export default function CreateRoomTypePage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="e.g., Deluxe Ocean Suite"
                 required
+                disabled={isCheckingDuplicate}
               />
             </div>
 
@@ -275,7 +356,7 @@ export default function CreateRoomTypePage() {
               </label>
               <select
                 value={formData.branchId}
-                onChange={(e) => handleInputChange('branchId', e.target.value)}
+                onChange={(e) => handleBranchChange(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
               >

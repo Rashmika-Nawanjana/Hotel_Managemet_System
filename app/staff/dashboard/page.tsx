@@ -18,17 +18,26 @@ interface StaffUser {
   position?: string;
   employeeId?: string;
   permissions?: string[];
+  branch?: {
+    name?: string;
+    location?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+  };
 }
 
 interface DashboardStats {
+  // Essential metrics
+  availableRooms: number;
+  checkedInGuests: number;
+  totalRooms: number;
+  
+  // Daily activity
   checkInsToday: number;
   checkOutsToday: number;
-  currentOccupancy: number;
-  totalRooms: number;
-  pendingRequests: number;
-  activeGuests: number;
-  roomsReady: number;
-  roomsCleaning: number;
+  
+  // Management only
   totalRevenue?: number;
   averageOccupancy?: number;
 }
@@ -72,13 +81,11 @@ export default function StaffDashboardPage() {
         
         setStaffUser(userData.user);
         
-        // Fetch dashboard stats based on staff role (only if staff-specific data is available)
-        if (userData.user.staffRole && userData.user.branchId) {
-          const statsResponse = await fetch(`/api/staff/dashboard-stats?role=${userData.user.staffRole}&branchId=${userData.user.branchId}`);
-          if (statsResponse.ok) {
-            const statsData = await statsResponse.json();
-            setStats(statsData.stats);
-          }
+        // Fetch dashboard stats (API will automatically filter by staff's assigned branch)
+        const statsResponse = await fetch('/api/staff/dashboard-stats');
+        if (statsResponse.ok) {
+          const statsData = await statsResponse.json();
+          setStats(statsData.stats);
         }
         
       } catch (err) {
@@ -160,6 +167,9 @@ export default function StaffDashboardPage() {
                 <p className="text-xs text-gray-500 -mt-1">
                   {staffUser.department} • {staffUser.position}
                 </p>
+                <p className="text-xs text-blue-600 font-medium">
+                  📍 {staffUser.branch?.name || 'Branch Assignment Pending'}
+                </p>
               </div>
             </div>
 
@@ -192,68 +202,17 @@ export default function StaffDashboardPage() {
             Welcome back, {firstName || 'Staff'}!
           </h1>
           <p className="text-blue-100 mb-1">{staffUser.department || 'N/A'} • {staffUser.position || 'N/A'}</p>
-          <p className="text-blue-100">Employee ID: {staffUser.employeeId || 'N/A'}</p>
+          <p className="text-blue-100 mb-1">Employee ID: {staffUser.employeeId || 'N/A'}</p>
+          <p className="text-blue-100 font-medium">
+            📍 {staffUser.branch?.name || 'Branch Assignment Pending'}
+            {staffUser.branch?.location && ` • ${staffUser.branch.location}`}
+          </p>
           {isManagement && (
             <p className="text-blue-100 mt-2">🔒 Management Access - All Branches</p>
           )}
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🔑</span>
-              </div>
-              <span className="text-sm text-gray-600">Today</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">
-              {stats?.checkInsToday || 0}
-            </p>
-            <p className="text-sm text-gray-600">Check-ins Today</p>
-          </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🚪</span>
-              </div>
-              <span className="text-sm text-gray-600">Today</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">
-              {stats?.checkOutsToday || 0}
-            </p>
-            <p className="text-sm text-gray-600">Check-outs Today</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🏨</span>
-              </div>
-              <span className="text-sm text-gray-600">Current</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">
-              {stats?.currentOccupancy || 0}/{stats?.totalRooms || 0}
-            </p>
-            <p className="text-sm text-gray-600">
-              Room Occupancy ({stats ? Math.round((stats.currentOccupancy / stats.totalRooms) * 100) : 0}%)
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🛎️</span>
-              </div>
-              <span className="text-sm text-gray-600">Pending</span>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">
-              {stats?.pendingRequests || 0}
-            </p>
-            <p className="text-sm text-gray-600">Service Requests</p>
-          </div>
-        </div>
 
         {/* Management-specific stats */}
         {isManagement && stats && (
@@ -286,31 +245,60 @@ export default function StaffDashboardPage() {
           </div>
         )}
 
-        {/* Room Status */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500">
-            <p className="text-sm text-gray-600 mb-1">Rooms Ready</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {stats?.roomsReady || 0}
-            </p>
+        {/* Essential Staff Metrics */}
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Today's Overview</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Current status • Total rooms: {stats?.totalRooms || 0}
+          </p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Available Rooms</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  {stats?.availableRooms || 0}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">Ready for check-in</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <span className="text-2xl">🏨</span>
+              </div>
+            </div>
           </div>
+          
+          <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Checked-in Guests</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  {stats?.checkedInGuests || 0}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">Currently in rooms</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <span className="text-2xl">👥</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Activity */}
+        <div className="grid md:grid-cols-2 gap-4 mb-8">
           <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-yellow-500">
-            <p className="text-sm text-gray-600 mb-1">Being Cleaned</p>
+            <p className="text-sm text-gray-600 mb-1">Check-ins Today</p>
             <p className="text-2xl font-bold text-gray-900">
-              {stats?.roomsCleaning || 0}
+              {stats?.checkInsToday || 0}
             </p>
+            <p className="text-xs text-gray-500 mt-1">Guests arriving today</p>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
-            <p className="text-sm text-gray-600 mb-1">Occupied</p>
+          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-red-500">
+            <p className="text-sm text-gray-600 mb-1">Check-outs Today</p>
             <p className="text-2xl font-bold text-gray-900">
-              {stats?.currentOccupancy || 0}
+              {stats?.checkOutsToday || 0}
             </p>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4 border-l-4 border-gray-500">
-            <p className="text-sm text-gray-600 mb-1">Active Guests</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {stats?.activeGuests || 0}
-            </p>
+            <p className="text-xs text-gray-500 mt-1">Guests leaving today</p>
           </div>
         </div>
 
@@ -335,6 +323,20 @@ export default function StaffDashboardPage() {
                 >
                   <span className="text-2xl mb-2 block">🚪</span>
                   <span className="font-medium text-blue-900">Check-out Guest</span>
+                </Link>
+                <Link
+                  href="/staff/rooms"
+                  className="block p-4 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition text-center"
+                >
+                  <span className="text-2xl mb-2 block">🏨</span>
+                  <span className="font-medium text-indigo-900">Room Management</span>
+                </Link>
+                <Link
+                  href="/staff/manual-booking"
+                  className="block p-4 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition text-center"
+                >
+                  <span className="text-2xl mb-2 block">📝</span>
+                  <span className="font-medium text-emerald-900">Manual Booking</span>
                 </Link>
                 <Link
                   href="/staff/bookings"
@@ -381,6 +383,18 @@ export default function StaffDashboardPage() {
               </h2>
               <div className="space-y-3">
                 <div className="flex justify-between">
+                  <span className="text-gray-600">Branch:</span>
+                  <span className="font-medium text-blue-600">
+                    {staffUser.branch?.name || 'N/A'}
+                  </span>
+                </div>
+                {staffUser.branch?.location && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Location:</span>
+                    <span className="font-medium">{staffUser.branch.location}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
                   <span className="text-gray-600">Department:</span>
                   <span className="font-medium">{staffUser.department || 'N/A'}</span>
                 </div>
@@ -397,7 +411,13 @@ export default function StaffDashboardPage() {
                 {!isManagement && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Branch Access:</span>
-                    <span className="font-medium">Limited</span>
+                    <span className="font-medium">Limited to {staffUser.branch?.name || 'Assigned Branch'}</span>
+                  </div>
+                )}
+                {isManagement && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Branch Access:</span>
+                    <span className="font-medium text-purple-600">All Branches</span>
                   </div>
                 )}
               </div>

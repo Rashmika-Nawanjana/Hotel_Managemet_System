@@ -14,24 +14,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const role = searchParams.get('role')
-    const branchId = searchParams.get('branchId')
+    // Get staff user info to determine branch access
+    const staffUser = await queryOne(`
+      SELECT sp."branchId", sp."staffRole"
+      FROM "StaffProfile" sp
+      WHERE sp."userId" = $1
+    `, [decoded.userId])
 
-    if (!role || !branchId) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
+    if (!staffUser) {
+      return NextResponse.json({ error: 'Staff profile not found' }, { status: 404 })
     }
 
-    const isManagement = role === 'MANAGEMENT'
+    const isManagement = staffUser.staffRole === 'MANAGEMENT'
     const today = new Date().toISOString().split('T')[0]
 
     // Base stats query - always include branch filtering for non-management
     let branchFilter = ''
     let branchParams: any[] = []
     
-    if (!isManagement) {
+    if (!isManagement && staffUser.branchId) {
       branchFilter = 'AND r."branchId" = $1'
-      branchParams = [branchId]
+      branchParams = [staffUser.branchId]
     }
 
     // Get today's check-ins
@@ -52,39 +55,41 @@ export async function GET(request: NextRequest) {
       ${branchFilter}
     `, [...branchParams, today])
 
-    // Get current occupancy
-    const occupancyResult = await queryOne(`
+    // Get essential metrics for staff
+    const essentialStats = await queryOne(`
       SELECT 
-        COUNT(CASE WHEN b.status IN ('CONFIRMED', 'CHECKED_IN') THEN 1 END)::int as occupied,
+        -- Available rooms right now
+        COUNT(CASE WHEN r.status = 'AVAILABLE' THEN 1 END)::int as available_rooms,
+        -- Occupied rooms (these have checked-in guests)
+        COUNT(CASE WHEN r.status = 'OCCUPIED' THEN 1 END)::int as checked_in_guests,
+        -- Total rooms
         COUNT(r.id)::int as total_rooms
       FROM "Room" r
-      LEFT JOIN "Booking" b ON r.id = b."roomId" 
-        AND b.status IN ('CONFIRMED', 'CHECKED_IN')
-        AND CURRENT_DATE BETWEEN DATE(b."checkInDate") AND DATE(b."checkOutDate")
       WHERE r.status != 'OUT_OF_SERVICE'
       ${branchFilter}
     `, branchParams)
 
-    // Get room status counts
-    const roomStatusResult = await queryOne(`
+    // Debug query to see room statuses
+    const debugRooms = await query(`
       SELECT 
-        COUNT(CASE WHEN r.status = 'AVAILABLE' THEN 1 END)::int as ready,
-        COUNT(CASE WHEN r.status = 'CLEANING' THEN 1 END)::int as cleaning,
-        COUNT(CASE WHEN r.status = 'OCCUPIED' THEN 1 END)::int as occupied
+        r."roomNumber",
+        r.status as room_status,
+        b.status as booking_status,
+        b."checkInDate",
+        b."checkOutDate",
+        u.firstname,
+        u.lastname
       FROM "Room" r
+      LEFT JOIN "Booking" b ON r.id = b."roomId" 
+        AND b.status = 'CHECKED_IN'
+        AND CURRENT_DATE BETWEEN DATE(b."checkInDate") AND DATE(b."checkOutDate")
+      LEFT JOIN users u ON b."userId" = u.id
       WHERE r.status != 'OUT_OF_SERVICE'
       ${branchFilter}
+      ORDER BY r."roomNumber"
     `, branchParams)
 
-    // Get active guests count
-    const activeGuestsResult = await queryOne(`
-      SELECT COUNT(DISTINCT b."userId")::int as count
-      FROM "Booking" b
-      JOIN "Room" r ON b."roomId" = r.id
-      WHERE b.status IN ('CONFIRMED', 'CHECKED_IN')
-        AND CURRENT_DATE BETWEEN DATE(b."checkInDate") AND DATE(b."checkOutDate")
-      ${branchFilter}
-    `, branchParams)
+    console.log('Debug room statuses:', debugRooms)
 
     // Get pending service requests (mock for now)
     const pendingRequests = 0 // TODO: Implement service requests table
@@ -125,19 +130,30 @@ export async function GET(request: NextRequest) {
     }
 
     const stats = {
+      // Essential metrics for staff
+      availableRooms: essentialStats?.available_rooms || 0,
+      checkedInGuests: essentialStats?.checked_in_guests || 0,
+      totalRooms: essentialStats?.total_rooms || 0,
+      
+      // Daily activity (still useful for staff)
       checkInsToday: checkInsResult?.count || 0,
       checkOutsToday: checkOutsResult?.count || 0,
-      currentOccupancy: occupancyResult?.occupied || 0,
-      totalRooms: occupancyResult?.total_rooms || 0,
-      pendingRequests,
-      activeGuests: activeGuestsResult?.count || 0,
-      roomsReady: roomStatusResult?.ready || 0,
-      roomsCleaning: roomStatusResult?.cleaning || 0,
+      
+      // Management-specific stats
       ...(isManagement && {
         totalRevenue,
         averageOccupancy
       })
     }
+
+    console.log('Dashboard stats calculated:', {
+      essentialStats,
+      checkInsResult,
+      checkOutsResult,
+      stats,
+      branchFilter,
+      branchParams
+    })
 
     return NextResponse.json({
       success: true,
