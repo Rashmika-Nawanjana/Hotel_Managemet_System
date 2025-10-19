@@ -16,8 +16,32 @@ export default function BookingBar() {
   const [branch, setBranch] = useState<string | undefined>(undefined);
   const [checkIn, setCheckIn] = useState<Date | undefined>();
   const [checkOut, setCheckOut] = useState<Date | undefined>();
+  const [branches, setBranches] = useState<Array<{id: string, name: string}>>([]);
   
   const bookingBarRef = useRef<HTMLDivElement>(null);
+
+  // Fetch branches on component mount
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const response = await fetch('/api/branches');
+        if (response.ok) {
+          const data = await response.json();
+          setBranches(data.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch branches:', error);
+        // Fallback to hardcoded data if API fails
+        setBranches([
+          { id: 'colombo', name: 'Colombo' },
+          { id: 'kandy', name: 'Kandy' },
+          { id: 'galle', name: 'Galle' }
+        ]);
+      }
+    };
+
+    fetchBranches();
+  }, []);
 
   useEffect(() => {
     // A slight delay ensures all elements are rendered and measurable
@@ -72,16 +96,39 @@ export default function BookingBar() {
   }, []);
 
   // Formatted options for the CustomDropdown
-  const branchOptions = [
-    { value: 'colombo', label: 'Colombo' }, 
-    { value: 'kandy', label: 'Kandy' }, 
-    { value: 'galle', label: 'Galle' }
-  ];
+  const branchOptions = branches.map(branch => ({
+    value: branch.id,
+    label: branch.name
+  }));
 
   const guestOptions = [1,2,3,4].map(num => ({
     value: num,
     label: `${num} Guest${num > 1 ? 's' : ''}`
   }));
+
+  // Build search parameters from selected filters
+  const buildSearchParams = () => {
+    const params = new URLSearchParams();
+    
+    if (branch) {
+      params.append('branch', branch);
+    }
+    
+    if (checkIn) {
+      params.append('checkIn', checkIn.toISOString().split('T')[0]);
+    }
+    
+    if (checkOut) {
+      params.append('checkOut', checkOut.toISOString().split('T')[0]);
+    }
+    
+    if (guests && guests > 1) {
+      params.append('guests', guests.toString());
+    }
+    
+    const queryString = params.toString();
+    return queryString ? `?${queryString}` : '';
+  };
 
   return (
     <>
@@ -134,7 +181,10 @@ export default function BookingBar() {
                 />
               </div>
               {/* Added 'border' class and corrected padding for a perfect pill shape */}
-              <Link href="/guest/search-rooms" className="bbu border border-amber-400 hover:bg-amber-400 text-amber-400 hover:text-gray-800 px-10 py-3 rounded-full flex items-center transition font-bold">
+              <Link 
+                href={`/guest/search-rooms${buildSearchParams()}`} 
+                className="bbu border border-amber-400 hover:bg-amber-400 text-amber-400 hover:text-gray-800 px-10 py-3 rounded-full flex items-center transition font-bold"
+              >
                 <span>BOOK</span>
               </Link>
             </div>

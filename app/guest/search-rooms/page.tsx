@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { RefreshCw } from 'lucide-react'
 
 interface RoomType {
@@ -43,7 +44,9 @@ interface Branch {
   address: string
 }
 
-export default function SearchRoomsPage() {
+function SearchRoomsContent() {
+  const searchParams = useSearchParams()
+  
   const [filters, setFilters] = useState({
     branch: '',
     checkIn: '',
@@ -59,11 +62,38 @@ export default function SearchRoomsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+
   useEffect(() => {
+    // Process URL parameters first
+    const branchParam = searchParams.get('branch')
+    const checkInParam = searchParams.get('checkIn')
+    const checkOutParam = searchParams.get('checkOut')
+    const guestsParam = searchParams.get('guests')
+    const roomTypeParam = searchParams.get('roomType')
+    const priceRangeParam = searchParams.get('priceRange')
+
+    console.log('URL parameters on mount:', { branchParam, checkInParam, checkOutParam, guestsParam, roomTypeParam, priceRangeParam })
+
+    if (branchParam || checkInParam || checkOutParam || guestsParam || roomTypeParam || priceRangeParam) {
+      setFilters(prev => ({
+        ...prev,
+        branch: branchParam || prev.branch,
+        checkIn: checkInParam || prev.checkIn,
+        checkOut: checkOutParam || prev.checkOut,
+        guests: guestsParam ? parseInt(guestsParam) : prev.guests,
+        roomType: roomTypeParam || prev.roomType,
+        priceRange: priceRangeParam || prev.priceRange
+      }))
+    }
+
     fetchInitialData()
   }, [])
 
   useEffect(() => {
+    console.log('Filters changed:', filters)
+    console.log('Branches loaded:', branches.length)
+    console.log('Room types loaded:', roomTypes.length)
+    
     if (branches.length > 0 || roomTypes.length > 0) {
       fetchAvailableRooms()
     }
@@ -100,7 +130,7 @@ export default function SearchRoomsPage() {
       const branchesRes = await fetch('/api/branches')
       const branchesData = await branchesRes.json()
       if (branchesRes.ok) {
-        setBranches(branchesData.branches || [])
+        setBranches(branchesData.data || [])
       }
 
       // Fetch room types
@@ -127,8 +157,13 @@ export default function SearchRoomsPage() {
       if (filters.roomType) params.append('roomType', filters.roomType)
       if (filters.priceRange !== 'all') params.append('priceRange', filters.priceRange)
 
+      console.log('Fetching rooms with filters:', filters)
+      console.log('API URL:', `/api/rooms/search?${params.toString()}`)
+
       const res = await fetch(`/api/rooms/search?${params.toString()}`)
       const data = await res.json()
+      
+      console.log('API response:', data)
       
       if (res.ok) {
         setAvailableRooms(data.roomTypes || [])
@@ -136,6 +171,7 @@ export default function SearchRoomsPage() {
         setAvailableRooms([])
       }
     } catch (err) {
+      console.error('Error fetching rooms:', err)
       setAvailableRooms([])
     }
   }
@@ -480,5 +516,20 @@ export default function SearchRoomsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function SearchRoomsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading search page...</p>
+        </div>
+      </div>
+    }>
+      <SearchRoomsContent />
+    </Suspense>
   )
 }

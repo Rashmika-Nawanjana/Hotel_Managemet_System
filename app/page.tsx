@@ -12,6 +12,7 @@ export default function HomePage() {
   const [user, setUser] = useState<any>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [branches, setBranches] = useState<any[]>([])
 
   useEffect(() => {
     // Fetch current user from API (checks HTTP-only cookie)
@@ -32,7 +33,36 @@ export default function HomePage() {
       }
     }
 
+    // Fetch branches from API
+    const fetchBranches = async () => {
+      try {
+        const response = await fetch('/api/branches')
+        if (response.ok) {
+          const data = await response.json()
+          console.log('Fetched branches from API:', data.data)
+          setBranches(data.data || [])
+        } else {
+          console.error('Failed to fetch branches, response not ok:', response.status)
+          // Fallback to hardcoded data if API fails
+          setBranches([
+            { id: 'colombo', name: 'Sky Nest Colombo', location: 'Colombo City Center', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400', features: ['Business District', 'Shopping Malls', 'Airport Access'], rooms: '150 Rooms' },
+            { id: 'kandy', name: 'Sky Nest Kandy', location: 'Kandy Hills', image: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400', features: ['Mountain Views', 'Cultural Sites', 'Tea Gardens'], rooms: '120 Rooms' },
+            { id: 'galle', name: 'Sky Nest Galle', location: 'Galle Fort', image: 'https://images.unsplash.com/photo-1578774204375-51839d9fde3d?w=400', features: ['Beach Access', 'Historic Fort', 'Ocean Views'], rooms: '80 Rooms' },
+          ])
+        }
+      } catch (error) {
+        console.error('Failed to fetch branches:', error)
+        // Fallback to hardcoded data if API fails
+        setBranches([
+          { id: 'colombo', name: 'Sky Nest Colombo', location: 'Colombo City Center', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400', features: ['Business District', 'Shopping Malls', 'Airport Access'], rooms: '150 Rooms' },
+          { id: 'kandy', name: 'Sky Nest Kandy', location: 'Kandy Hills', image: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400', features: ['Mountain Views', 'Cultural Sites', 'Tea Gardens'], rooms: '120 Rooms' },
+          { id: 'galle', name: 'Sky Nest Galle', location: 'Galle Fort', image: 'https://images.unsplash.com/photo-1578774204375-51839d9fde3d?w=400', features: ['Beach Access', 'Historic Fort', 'Ocean Views'], rooms: '80 Rooms' },
+        ])
+      }
+    }
+
     fetchUser()
+    fetchBranches()
   }, [])
 
   useEffect(() => {
@@ -84,11 +114,6 @@ export default function HomePage() {
     }
   }
 
-  const branches = [
-    { id: 'colombo', name: 'Sky Nest Colombo', location: 'Colombo City Center', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400', features: ['Business District', 'Shopping Malls', 'Airport Access'], rooms: '150 Rooms' },
-    { id: 'kandy', name: 'Sky Nest Kandy', location: 'Kandy Hills', image: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400', features: ['Mountain Views', 'Cultural Sites', 'Tea Gardens'], rooms: '120 Rooms' },
-    { id: 'galle', name: 'Sky Nest Galle', location: 'Galle Fort', image: 'https://images.unsplash.com/photo-1578774204375-51839d9fde3d?w=400', features: ['Beach Access', 'Historic Fort', 'Ocean Views'], rooms: '80 Rooms' },
-  ]
 
   const roomCategories = [
     { type: 'Deluxe Room', price: 'From $120/night', image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400', amenities: ['King Size Bed', 'City View', 'Free WiFi', 'Mini Bar'], size: '35 sqm' },
@@ -294,19 +319,19 @@ export default function HomePage() {
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8">
-            {branches.map((branch, index) => (
+            {branches.length > 0 ? branches.map((branch, index) => (
               <div
-                key={index}
+                key={branch.id || index}
                 className="bg-[#1a1f2e] rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-amber-500/20 transition duration-300 group"
               >
                 <div className="relative overflow-hidden">
                   <img
-                    src={branch.image}
+                    src={branch.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400'}
                     alt={branch.name}
                     className="w-full h-64 object-cover group-hover:scale-110 transition duration-500"
                   />
                   <div className="absolute top-4 left-4 bg-amber-500/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                    <span className="text-sm font-semibold text-[#10141c]">{branch.rooms}</span>
+                    <span className="text-sm font-semibold text-[#10141c]">{branch.rooms || 'Rooms Available'}</span>
                   </div>
                 </div>
 
@@ -317,7 +342,7 @@ export default function HomePage() {
                   </div>
                   <h3 className="text-2xl font-bold mb-3 text-white">{branch.name}</h3>
                   <div className="space-y-2 mb-4">
-                    {branch.features.map((feature, i) => (
+                    {(branch.features || ['Premium Location', 'Modern Amenities', '24/7 Service']).map((feature, i) => (
                       <div key={i} className="flex items-center">
                         <div className="w-2 h-2 bg-amber-500 rounded-full mr-3"></div>
                         <span className="text-gray-400 text-sm">{feature}</span>
@@ -325,14 +350,19 @@ export default function HomePage() {
                     ))}
                   </div>
                   <Link
-                    href="/guest/search-rooms"
+                    href={`/guest/search-rooms?branch=${branch.id}`}
                     className="block w-full bg-amber-500 text-[#10141c] py-3 rounded-xl hover:bg-amber-400 transition font-medium text-center"
                   >
                     View Rooms
                   </Link>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="col-span-3 text-center py-8">
+                <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-400">Loading branches...</p>
+              </div>
+            )}
           </div>
         </div>
       </section>
