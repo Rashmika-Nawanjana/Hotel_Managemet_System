@@ -60,42 +60,57 @@ export default function GuestLoginPage() {
   useEffect(() => {
     const timer = setInterval(() => {
       // Animate out the current text
-      gsap.to([titleRef.current, descriptionRef.current], { 
-        opacity: 0, 
-        y: 20, 
-        duration: 0.5, 
-        ease: 'power3.in',
-        onComplete: () => {
-          // Change the slide after the text has faded out
-          setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
-        }
-      });
+      if (titleRef.current && descriptionRef.current) {
+        gsap.to([titleRef.current, descriptionRef.current], { 
+          opacity: 0, 
+          y: 20, 
+          duration: 0.5, 
+          ease: 'power3.in',
+          onComplete: () => {
+            // Change the slide after the text has faded out
+            setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
+          }
+        });
+      }
     }, 5000); // Change slide every 5 seconds
     return () => clearInterval(timer);
   }, []);
 
   // GSAP animation for text fade-in
   useEffect(() => {
-    gsap.fromTo([titleRef.current, descriptionRef.current], 
-      { opacity: 0, y: -20 }, 
-      { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
-    );
+    if (titleRef.current && descriptionRef.current) {
+      gsap.fromTo([titleRef.current, descriptionRef.current], 
+        { opacity: 0, y: -20 }, 
+        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
+      );
+    }
   }, [currentSlide]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      if (email && password) {
-        router.push('/guest/dashboard');
-      } else {
-        setError('Please fill in all fields');
-        setIsLoading(false);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
       }
+
+      // Successfully logged in - no email verification check needed
+      // (Verification is optional, users can verify in their profile)
+      router.push('/guest/dashboard');
+      router.refresh(); // Force refresh to ensure session is loaded
     } catch (err) {
-      setError('Invalid email or password');
+      const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
+      setError(errorMessage);
       setIsLoading(false);
     }
   }

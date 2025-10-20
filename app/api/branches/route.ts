@@ -1,28 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db-queries'
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const branches = await query(
-      `SELECT id, name, slug, location, address, phone, email, status
-       FROM branches
-       WHERE status = 'operational'
-       ORDER BY name ASC`
-    )
+    const result = await pool.query(
+      `SELECT 
+        b.id,
+        b.name,
+        b.location,
+        b.phone,
+        b.email,
+        b.description,
+        (SELECT image_url FROM branch_images WHERE branch_id = b.id ORDER BY display_order ASC LIMIT 1) as image
+       FROM branches b
+       WHERE b.is_active = true
+       ORDER BY b.name`
+    );
 
-    return NextResponse.json(
-      {
-        success: true,
-        count: branches.length,
-        data: branches,
-      },
-      { status: 200 }
-    )
+    return NextResponse.json({ branches: result.rows });
   } catch (error) {
-    console.error('Error fetching branches:', error)
+    console.error('Get branches error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch branches' },
       { status: 500 }
-    )
+    );
   }
 }

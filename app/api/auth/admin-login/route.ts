@@ -1,313 +1,175 @@
-import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
-import { queryOne, execute, transaction } from '@/lib/db-queries'
-import { generateToken, generateVerificationToken } from '@/lib/auth'
-import { sendEmail, get2FACodeHTML, get2FACodeText } from '@/lib/email'
-import { randomBytes } from 'crypto'
+import { NextResponse } from 'next/server';
+import pool from '../../../../lib/db';
+import { comparePassword, generateOtp, hashPassword } from '../../../../lib/authUtils';
+import { sendOtpEmail } from '../../../../lib/email';
+import { SignJWT } from 'jose';
 
-// Generate CUID-like ID
-function generateId() {
-  return 'c' + randomBytes(12).toString('base64').replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 24)
-}
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { email, password, twoFactorCode, step } = body
+    const { email, password, twoFactorCode } = await request.json();
 
-    console.log('🔐 Admin login attempt:', { email, step, hasCode: !!twoFactorCode })
+    console.log('[ADMIN LOGIN] Request received - Email:', email, 'Has password:', !!password, 'Has OTP:', !!twoFactorCode);
 
-    // STEP 1: Validate credentials and send 2FA code
-    if (step === 'credentials' || !step) {
-      // Validation
-      if (!email || !password) {
-        return NextResponse.json(
-          { error: 'Email and password are required' },
-          { status: 400 }
-        )
-      }
+    if (!email) {
+      return NextResponse.json({ error: 'Email is required.' }, { status: 400 });
+    }
 
-      console.log('📧 Looking up admin user:', email.toLowerCase())
+    // --- Step 2: Verify OTP ---
+    if (twoFactorCode) {
+        // Trim and clean the OTP code
+        const cleanedOtp = String(twoFactorCode).trim().replace(/\s+/g, '');
+        
+        console.log('[ADMIN LOGIN] Verifying OTP for email:', email, 'Code:', cleanedOtp);
+        console.log('[ADMIN LOGIN] Original OTP:', twoFactorCode, 'Cleaned:', cleanedOtp);
+        console.log('[ADMIN LOGIN] Provided OTP type:', typeof cleanedOtp, 'Length:', cleanedOtp.length);
+        
+        const otpRes = await pool.query(
+            "SELECT otp_code, expires_at FROM otps WHERE user_email = $1 AND user_type = 'ADMIN' AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1",
+            [email]
+        );
 
-      // Find admin user by email
-      const user = await queryOne<any>(
-        `SELECT 
-          u.id,
-          u.email,
-          u.password,
-          u."firstName",
-          u."lastName",
-          u.phone,
-          u.role,
-          u.status,
-          u."emailVerified"
-        FROM users u
-        WHERE u.email = $1 AND u.role = 'ADMIN'`,
-        [email.toLowerCase()]
-      )
+        console.log('[ADMIN LOGIN] OTP query result:', otpRes.rowCount, 'rows found');
+        
+        if (otpRes.rowCount === 0) {
+            console.log('[ADMIN LOGIN] No valid OTP found in database');
+            
+            // Debug: Check if there are ANY OTPs for this user
+            const allOtpsRes = await pool.query(
+                "SELECT otp_code, expires_at, created_at, expires_at > NOW() as is_valid FROM otps WHERE user_email = $1 AND user_type = 'ADMIN' ORDER BY created_at DESC LIMIT 3",
+                [email]
+            );
+            console.log('[ADMIN LOGIN] All OTPs for user (last 3):', allOtpsRes.rows);
+            
+            return NextResponse.json({ error: 'Invalid or expired OTP.' }, { status: 400 });
+        }
+        
+        const dbOtp = String(otpRes.rows[0].otp_code).trim();
+        console.log('[ADMIN LOGIN] Found OTP in DB:', dbOtp);
+        console.log('[ADMIN LOGIN] DB OTP type:', typeof dbOtp, 'Length:', dbOtp.length);
+        console.log('[ADMIN LOGIN] Comparing:', `'${dbOtp}'`, 'vs', `'${cleanedOtp}'`);
+        
+        if (dbOtp !== cleanedOtp) {
+            console.log('[ADMIN LOGIN] OTP mismatch - DB:', dbOtp, 'Provided:', cleanedOtp);
+            console.log('[ADMIN LOGIN] Character codes - DB:', Array.from(dbOtp).map(c => c.charCodeAt(0)));
+            console.log('[ADMIN LOGIN] Character codes - Provided:', Array.from(cleanedOtp).map(c => c.charCodeAt(0)));
+            return NextResponse.json({ error: 'Invalid two-factor authentication code.' }, { status: 400 });
+        }
 
-      // Check if user exists
-      if (!user) {
-        console.log('❌ No admin found with this email')
-        return NextResponse.json(
-          { error: 'Invalid email or password' },
-          { status: 401 }
-        )
-      }
+        // OTP is correct, delete it so it can't be reused
+        await pool.query("DELETE FROM otps WHERE otp_code = $1", [dbOtp]);
+        
+        console.log('[ADMIN LOGIN] OTP verified and deleted successfully');
 
-      console.log('✅ Admin user found:', user.email)
-      console.log('📝 User status:', user.status)
-      console.log('✉️ Email verified:', user.emailVerified)
+        // Fetch complete admin information for JWT
+        const adminRes = await pool.query(
+            "SELECT id, email, first_name, last_name, phone, is_verified, branch_id FROM admins WHERE email = $1",
+            [email]
+        );
 
-      // Check if account is active
-      if (user.status !== 'ACTIVE') {
-        console.log('⛔ Account not active')
-        return NextResponse.json(
-          { error: 'Your account has been suspended. Please contact IT support.' },
-          { status: 403 }
-        )
-      }
+        if (adminRes.rowCount === 0) {
+            return NextResponse.json({ error: 'Admin not found.' }, { status: 404 });
+        }
 
-      // Check if email is verified
-      if (!user.emailVerified) {
-        console.log('⚠️ Email not verified')
-        return NextResponse.json(
-          { 
-            error: 'Email not verified',
-            code: 'EMAIL_NOT_VERIFIED',
-            message: 'Please verify your email address before logging in.'
-          },
-          { status: 403 }
-        )
-      }
+        const admin = adminRes.rows[0];
 
-      // Verify password
-      console.log('🔑 Verifying password...')
-      const isValidPassword = await bcrypt.compare(password, user.password)
-      console.log('🔓 Password valid:', isValidPassword)
-
-      if (!isValidPassword) {
-        console.log('❌ Invalid password')
-        return NextResponse.json(
-          { error: 'Invalid email or password' },
-          { status: 401 }
-        )
-      }
-
-      // Generate 6-digit 2FA code
-      const code = Math.floor(100000 + Math.random() * 900000).toString()
-      const tokenId = generateId()
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
-
-      console.log(`🔐 2FA Code generated for ${user.email}: ${code}`)
-      console.log(`⏰ Code expires at:`, expiresAt.toISOString())
-
-      // Store 2FA code in database using transaction
-      await transaction(async (client) => {
-        // Delete old unused 2FA codes for this user
-        await client.query(
-          'DELETE FROM verification_tokens WHERE "userId" = $1 AND used = false',
-          [user.id]
-        )
-
-        // Create new 2FA code token
-        await client.query(
-          `INSERT INTO verification_tokens (id, token, "userId", "expiresAt", used, "createdAt")
-           VALUES ($1, $2, $3, $4, false, NOW())`,
-          [tokenId, code, user.id, expiresAt]
-        )
-      })
-
-      console.log('💾 2FA code stored in database')
-
-      // Send 2FA code via email
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: `Your Sky Nest Admin Login Code: ${code}`,
-          html: get2FACodeHTML(user.firstName, code),
-          text: get2FACodeText(user.firstName, code),
+        // Create JWT token
+        console.log('[ADMIN LOGIN] Creating JWT token for admin:', admin.id);
+        console.log('[ADMIN LOGIN] JWT_SECRET exists:', !!JWT_SECRET);
+        
+        const token = await new SignJWT({
+            userId: admin.id,
+            email: admin.email,
+            role: 'ADMIN',
+            userType: 'ADMIN',
+            name: `${admin.first_name} ${admin.last_name}`,
+            branchId: admin.branch_id
         })
-        console.log('✅ 2FA code sent successfully via email')
-      } catch (emailError) {
-        console.error('❌ Failed to send 2FA email:', emailError)
-        return NextResponse.json(
-          { error: 'Failed to send 2FA code. Please try again.' },
-          { status: 500 }
-        )
-      }
-      
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'A 6-digit verification code has been sent to your email',
-          requiresTwoFactor: true,
-          userId: user.id,
-          email: user.email,
-          expiresIn: 300, // 5 minutes in seconds
-        },
-        { status: 200 }
-      )
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('7d')
+            .sign(JWT_SECRET);
+
+        console.log('[ADMIN LOGIN] JWT token created successfully');
+
+        // Set cookie and return user data
+        const response = NextResponse.json({
+            success: true,
+            message: 'Login successful',
+            user: {
+                id: admin.id,
+                email: admin.email,
+                name: `${admin.first_name} ${admin.last_name}`,
+                phone: admin.phone,
+                role: 'ADMIN',
+                isVerified: admin.is_verified
+            }
+        });
+
+        response.cookies.set('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60, // 7 days
+            path: '/'
+        });
+
+        console.log('[ADMIN LOGIN] Token cookie set for admin:', admin.id);
+
+        return response;
     }
 
-    // STEP 2: Verify 2FA code
-    if (step === '2fa') {
-      const { userId } = body
+    // --- Step 1: Verify Email and Password ---
+    if (password) {
+        const adminRes = await pool.query("SELECT id, password_hash FROM admins WHERE email = $1", [email]);
 
-      console.log('🔢 Verifying 2FA code for user:', userId)
+        if (adminRes.rowCount === 0) {
+            return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+        }
 
-      if (!userId || !twoFactorCode) {
-        return NextResponse.json(
-          { error: 'User ID and 2FA code are required' },
-          { status: 400 }
-        )
-      }
+        const admin = adminRes.rows[0];
+        const passwordMatch = await comparePassword(password, admin.password_hash);
 
-      // Find valid 2FA token
-      const tokenData = await queryOne<any>(
-        `SELECT id, token, "userId", "expiresAt", used 
-         FROM verification_tokens 
-         WHERE "userId" = $1 AND token = $2 AND used = false
-         ORDER BY "createdAt" DESC
-         LIMIT 1`,
-        [userId, twoFactorCode.trim()]
-      )
+        if (!passwordMatch) {
+            return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+        }
 
-      if (!tokenData) {
-        console.log('❌ Invalid 2FA code')
-        return NextResponse.json(
-          { error: 'Invalid or expired 2FA code. Please try again.' },
-          { status: 401 }
-        )
-      }
+        // Password is correct, generate and send OTP
+        const otp = generateOtp();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
 
-      // Check if token is expired
-      if (new Date() > new Date(tokenData.expiresAt)) {
-        console.log('⏰ 2FA code expired')
-        // Mark as used/expired
-        await execute(
-          'UPDATE verification_tokens SET used = true WHERE id = $1',
-          [tokenData.id]
-        )
-        return NextResponse.json(
-          { error: '2FA code expired. Please login again.' },
-          { status: 401 }
-        )
-      }
+        console.log('[ADMIN LOGIN] Generated OTP type:', typeof otp, 'Value:', otp);
+        console.log('[ADMIN LOGIN] Inserting OTP for admin:', email, 'OTP:', otp);
+        
+        // Insert OTP into database first
+        const insertResult = await pool.query(
+          "INSERT INTO otps (user_email, user_type, otp_code, expires_at) VALUES ($1, $2, $3, $4) RETURNING id", 
+          [email, 'ADMIN', otp, expiresAt]
+        );
+        
+        console.log('[ADMIN LOGIN] OTP inserted successfully, ID:', insertResult.rows[0].id);
+        
+        // Send email asynchronously (don't wait for it)
+        sendOtpEmail(email, otp).then(() => {
+          console.log('[ADMIN LOGIN] OTP email sent successfully');
+        }).catch(err => {
+          console.error('[ADMIN LOGIN] Failed to send OTP email:', err);
+        });
 
-      console.log('✅ 2FA code verified successfully')
-
-      // Mark token as used
-      await execute(
-        'UPDATE verification_tokens SET used = true WHERE id = $1',
-        [tokenData.id]
-      )
-
-      // Get full user data
-      const user = await queryOne<any>(
-        `SELECT 
-          u.id,
-          u.email,
-          u."firstName",
-          u."lastName",
-          u.phone,
-          u.role,
-          u.status,
-          u."emailVerified"
-        FROM users u
-        WHERE u.id = $1`,
-        [userId]
-      )
-
-      if (!user) {
-        console.log('❌ User not found')
-        return NextResponse.json(
-          { error: 'User not found' },
-          { status: 404 }
-        )
-      }
-
-      // Get staff profile
-      const staffProfile = await queryOne<any>(
-        `SELECT 
-          sp.id,
-          sp."userId",
-          sp.position,
-          sp.department,
-          sp."hireDate",
-          sp."employeeId",
-          sp."branchId",
-          b.id as "branch_id",
-          b.name as "branch_name",
-          b.location as "branch_location"
-        FROM staff_profiles sp
-        LEFT JOIN branches b ON sp."branchId" = b.id
-        WHERE sp."userId" = $1`,
-        [userId]
-      )
-
-      // Update last login time
-      await execute(
-        'UPDATE users SET "lastLoginAt" = NOW() WHERE id = $1',
-        [user.id]
-      )
-
-      console.log('📝 Last login time updated')
-
-      // Generate JWT token
-      const token = generateToken({
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-      })
-
-      console.log('🎫 JWT token generated')
-
-      // Prepare user data
-      const userData = {
-        ...user,
-        staffProfile: staffProfile || null,
-      }
-
-      // Set token in HTTP-only cookie
-      const response = NextResponse.json(
-        {
-          success: true,
-          message: 'Login successful',
-          user: userData,
-          token,
-        },
-        { status: 200 }
-      )
-
-      // Set cookie (expires in 7 days)
-      response.cookies.set('auth-token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-        path: '/',
-      })
-
-      console.log('✅ Admin login successful:', user.email)
-      console.log('🎉 User authenticated with 2FA')
-
-      return response
+        return NextResponse.json({ success: true, requires2FA: true });
     }
+    
+    return NextResponse.json({ error: 'Invalid request payload.' }, { status: 400 });
 
-    return NextResponse.json(
-      { error: 'Invalid request step' },
-      { status: 400 }
-    )
-
-  } catch (error: any) {
-    console.error('💥 Admin login error:', error)
-    return NextResponse.json(
-      { 
-        error: 'Internal server error. Please try again later.',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
-      { status: 500 }
-    )
+  } catch (err) {
+    console.error('[ADMIN LOGIN API ERROR]:', err);
+    console.error('[ADMIN LOGIN ERROR STACK]:', err instanceof Error ? err.stack : 'No stack trace');
+    console.error('[ADMIN LOGIN ERROR MESSAGE]:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ 
+      error: 'An internal server error occurred.',
+      details: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : undefined
+    }, { status: 500 });
   }
 }
+

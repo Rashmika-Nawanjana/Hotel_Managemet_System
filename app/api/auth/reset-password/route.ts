@@ -1,16 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
-import { queryOne, execute, transaction } from '@/lib/db-queries'
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { hashPassword } from '@/lib/authUtils';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const { token, password } = await request.json()
+    const { token, password } = await request.json();
+
+    console.log('[RESET PASSWORD] Request received');
 
     if (!token || !password) {
       return NextResponse.json(
         { error: 'Token and password are required' },
         { status: 400 }
-      )
+      );
     }
 
     // Validate password strength
@@ -18,74 +20,86 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Password must be at least 8 characters long' },
         { status: 400 }
-      )
+      );
     }
 
-    console.log('Password reset attempt with token:', token.substring(0, 10) + '...')
+    console.log('[RESET PASSWORD] Looking up token in database');
 
-    // Find valid token
-    const resetToken = await queryOne<any>(
-      `SELECT id, "userId", "expiresAt", used 
+    // Find valid reset token (V2 Schema)
+    const tokenResult = await pool.query(
+      `SELECT user_email, user_type, expires_at, used 
        FROM password_reset_tokens 
-       WHERE token = $1`,
+       WHERE reset_token = $1 AND expires_at > NOW() AND used = false`,
       [token]
-    )
+    );
 
-    if (!resetToken) {
+    if (tokenResult.rows.length === 0) {
+      console.log('[RESET PASSWORD] Token not found or expired');
       return NextResponse.json(
         { error: 'Invalid or expired reset token' },
         { status: 400 }
-      )
+      );
     }
 
-    // Check if token is already used
-    if (resetToken.used) {
-      return NextResponse.json(
-        { error: 'This reset link has already been used' },
-        { status: 400 }
-      )
-    }
+    const { user_email, user_type } = tokenResult.rows[0];
 
-    // Check if token is expired
-    if (new Date() > new Date(resetToken.expiresAt)) {
-      return NextResponse.json(
-        { error: 'This reset link has expired. Please request a new one.' },
-        { status: 400 }
-      )
-    }
+    console.log('[RESET PASSWORD] Token valid for:', user_email, 'Type:', user_type);
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await hashPassword(password);
 
-    // Update password and mark token as used in a transaction
-    await transaction(async (client) => {
-      // Update user password
-      await client.query(
-        'UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2',
-        [hashedPassword, resetToken.userId]
-      )
+    // Update password in the appropriate table based on user type (V2 Schema)
+    let updateResult;
+    if (user_type === 'ADMIN') {
+      updateResult = await pool.query(
+        'UPDATE admins SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
+        [hashedPassword, user_email]
+      );
+    } else if (user_type === 'STAFF') {
+      updateResult = await pool.query(
+        'UPDATE staff SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
+        [hashedPassword, user_email]
+      );
+    } else if (user_type === 'GUEST') {
+      updateResult = await pool.query(
+        'UPDATE guests SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
+        [hashedPassword, user_email]
+      );
+    } else {
+      console.log('[RESET PASSWORD] Invalid user type:', user_type);
+      return NextResponse.json(
+        { error: 'Invalid user type' },
+        { status: 400 }
+      );
+    }
 
-      // Mark token as used
-      await client.query(
-        'UPDATE password_reset_tokens SET used = true WHERE id = $1',
-        [resetToken.id]
-      )
-    })
+    if (updateResult.rowCount === 0) {
+      console.log('[RESET PASSWORD] User not found in', user_type, 'table');
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
-    console.log('✅ Password reset successful for user:', resetToken.userId)
+    console.log('[RESET PASSWORD] Password updated successfully');
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Password has been reset successfully. You can now login with your new password.',
-      },
-      { status: 200 }
-    )
+    // Mark token as used instead of deleting
+    await pool.query(
+      'UPDATE password_reset_tokens SET used = true WHERE reset_token = $1',
+      [token]
+    );
+
+    console.log('[RESET PASSWORD] Token marked as used');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Password reset successful! You can now login with your new password.'
+    });
   } catch (error) {
-    console.error('Reset password error:', error)
+    console.error('[RESET PASSWORD ERROR]:', error);
     return NextResponse.json(
-      { error: 'An error occurred. Please try again.' },
+      { error: 'An error occurred while resetting password', details: (error as Error).message },
       { status: 500 }
-    )
+    );
   }
 }

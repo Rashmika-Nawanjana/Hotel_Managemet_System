@@ -3,15 +3,16 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { LayoutDashboard, CalendarDays, User, BedDouble } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, User, BedDouble, Bell, LogOut } from 'lucide-react';
 import AnimatedButton from './AnimatedButton';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 
 const navItems = [
     { href: "/guest/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/guest/my-bookings", icon: CalendarDays, label: "My Bookings" },
+    { href: "/guest/alerts", icon: Bell, label: "Alerts" },
     { href: "/guest/profile", icon: User, label: "Profile" },
     { href: "/guest/search-rooms", icon: BedDouble, label: "Rooms" },
 ];
@@ -75,6 +76,23 @@ const NavItem = ({ href, icon: Icon, label }: { href: string, icon: React.Elemen
 };
 
 export default function GuestNavbar() {
+    const router = useRouter();
+
+    const handleLogout = async () => {
+        try {
+            const response = await fetch('/api/auth/logout', {
+                method: 'POST',
+            });
+            
+            if (response.ok) {
+                router.push('/');
+                router.refresh();
+            }
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    };
+
     return (
         <header className="backdrop-blur-lg bg-gradient-to-r from-amber-400/10 to-amber-600/30 border-b border-white/20 sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
@@ -89,6 +107,14 @@ export default function GuestNavbar() {
                     <AnimatedButton href="/guest/booking">
                         Book Now
                     </AnimatedButton>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/40 backdrop-blur-sm text-gray-600 hover:text-gray-800 rounded-full transition-all duration-300 text-xs font-medium border border-white/40 hover:border-white/60"
+                        title="Sign Out"
+                    >
+                        <LogOut size={14} className="opacity-70" />
+                        <span>Sign Out</span>
+                    </button>
                 </div>
             </div>
         </header>

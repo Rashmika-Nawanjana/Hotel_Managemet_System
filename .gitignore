@@ -39,3 +39,27 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local env files
+.env*.local
+
+# Database - Ignore development files but keep main production schema
+/Database/Dev_Notes/
+/Database/V1_Single_Users_Table/
+/Database/V2_Separated_Tables/
+/Database/my-app/
+/Database/*mock*.sql
+/Database/*fix*.sql
+/Database/*migration*.sql
+/Database/neon*.sql
+/Database/*.md
+!/Database/Main_Database/
+/Database/V2_Separated_Tables
+
+# Uploaded profile pictures
+/public/uploads/profile-pictures/*
+
+# AI-generated markdown files
+***.md
+
+/app/temp

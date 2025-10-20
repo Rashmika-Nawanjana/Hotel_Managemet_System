@@ -53,37 +53,55 @@ export default function StaffLoginPage() {
     // Carousel Logic
     useEffect(() => {
         const timer = setInterval(() => {
-            gsap.to([titleRef.current, descriptionRef.current], { 
-                opacity: 0, y: 20, duration: 0.5, ease: 'power3.in',
-                onComplete: () => {
-                    setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
-                }
-            });
+            if (titleRef.current && descriptionRef.current) {
+                gsap.to([titleRef.current, descriptionRef.current], { 
+                    opacity: 0, y: 20, duration: 0.5, ease: 'power3.in',
+                    onComplete: () => {
+                        setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
+                    }
+                });
+            }
         }, 5000);
         return () => clearInterval(timer);
     }, []);
 
     useEffect(() => {
-        gsap.fromTo([titleRef.current, descriptionRef.current], 
-            { opacity: 0, y: -20 }, 
-            { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
-        );
+        if (titleRef.current && descriptionRef.current) {
+            gsap.fromTo([titleRef.current, descriptionRef.current], 
+                { opacity: 0, y: -20 }, 
+                { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
+            );
+        }
     }, [currentSlide]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError('');
+        
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            if (formData.employeeId && formData.password && formData.branch) {
-                router.push('/staff/dashboard');
-            } else {
-                setError('Please fill in all required fields.');
-                setIsLoading(false);
+            const response = await fetch('/api/auth/staff-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employeeId: formData.employeeId,
+                    password: formData.password,
+                    branch: formData.branch
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Login failed');
             }
+
+            // Successfully logged in
+            router.push('/staff/dashboard');
+            router.refresh(); // Force refresh to ensure session is loaded
         } catch (err) {
-            setError('Invalid credentials or unauthorized access.');
+            const errorMessage = err instanceof Error ? err.message : 'Invalid credentials or unauthorized access.';
+            setError(errorMessage);
             setIsLoading(false);
         }
     };

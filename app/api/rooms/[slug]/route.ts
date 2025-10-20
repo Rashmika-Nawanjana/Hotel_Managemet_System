@@ -1,127 +1,113 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { queryOne, query } from '@/lib/db-queries'
-
-interface Amenity {
-  id: string
-  name: string
-  icon: string | null
-  category: string
-}
+import { NextRequest, NextResponse } from 'next/server';
+import pool from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = await params
+    const { slug } = await params;
+    
+    // Convert slug to integer for room type ID
+    const roomTypeId = parseInt(slug);
+    
+    if (isNaN(roomTypeId)) {
+      return NextResponse.json(
+        { error: 'Invalid room type ID' },
+        { status: 400 }
+      );
+    }
 
-    const roomType = await queryOne(
+    console.log('[ROOM DETAILS API] Fetching room type ID:', roomTypeId);
+
+    const result = await pool.query(
       `SELECT 
-        rt.*,
-        json_build_object(
-          'id', b.id,
-          'name', b.name,
-          'slug', b.slug,
-          'location', b.location,
-          'address', b.address,
-          'phone', b.phone,
-          'email', b.email
-        ) as branch,
-        COALESCE((
-          SELECT json_agg(
-            json_build_object(
-              'id', ri.id,
-              'url', ri.url,
-              'caption', ri.caption,
-              'order', ri."order"
-            ) ORDER BY ri."order" ASC
-          )
-          FROM room_images ri
-          WHERE ri."roomTypeId" = rt.id
-        ), '[]'::json) as images,
-        COALESCE((
-          SELECT json_agg(
-            json_build_object(
-              'id', a.id,
-              'name', a.name,
-              'icon', a.icon,
-              'category', a.category
-            )
-          )
-          FROM room_type_amenities rta
-          JOIN amenities a ON rta."amenityId" = a.id
-          WHERE rta."roomTypeId" = rt.id
-        ), '[]'::json) as amenities
+        rt.id,
+        rt.name,
+        rt.description,
+        rt.base_price as "basePrice",
+        rt.capacity as "maxOccupancy",
+        rt.bed_type as "bedType",
+        1 as "numberOfBeds",
+        rt.size_sqm as "roomSize",
+        'City' as "viewType",
+        (rt.base_price > 50000) as "isFeatured",
+        b.id as "branchId",
+        b.name as "branchName",
+        b.location as "branchLocation",
+        b.phone as "branchPhone",
+        b.email as "branchEmail",
+        (SELECT COUNT(*) FROM rooms r WHERE r.room_type_id = rt.id AND r.status = 'Available') as "availableRooms",
+        (
+          SELECT json_agg(img_data ORDER BY img_data->>'displayOrder')
+          FROM (
+            SELECT json_build_object('id', ri.id, 'url', ri.image_url, 'caption', ri.caption, 'displayOrder', ri.display_order) as img_data
+            FROM room_images ri
+            WHERE ri.room_type_id = rt.id
+          ) images_subquery
+        ) as images,
+        (
+          SELECT json_agg(json_build_object('id', a.id, 'name', a.name, 'icon_name', a.icon_name))
+          FROM room_amenities ra
+          JOIN amenities a ON ra.amenity_id = a.id
+          WHERE ra.room_type_id = rt.id
+        ) as amenities
       FROM room_types rt
-      LEFT JOIN branches b ON rt."branchId" = b.id
-      WHERE rt.slug = $1`,
-      [slug]
-    )
+      LEFT JOIN rooms r ON rt.id = r.room_type_id
+      LEFT JOIN branches b ON r.branch_id = b.id
+      WHERE rt.id = $1
+      LIMIT 1`,
+      [roomTypeId]
+    );
 
-    if (!roomType) {
+    console.log('[ROOM DETAILS API] Query result rows:', result.rows.length);
+
+    if (result.rows.length === 0) {
       return NextResponse.json(
         { error: 'Room type not found' },
         { status: 404 }
-      )
+      );
     }
 
-    // Get available rooms separately
-    const rooms = await query(
-      `SELECT id, "roomNumber", floor, status
-       FROM rooms
-       WHERE "roomTypeId" = $1 AND status = 'AVAILABLE'`,
-      [roomType.id]
-    )
+    const row = result.rows[0];
 
-    // Group amenities by category
-    const amenitiesByCategory: Record<string, Amenity[]> = {}
-    if (roomType.amenities && Array.isArray(roomType.amenities)) {
-      roomType.amenities.forEach((amenity: Amenity) => {
-        const category = amenity.category
-        if (!amenitiesByCategory[category]) {
-          amenitiesByCategory[category] = []
-        }
-        amenitiesByCategory[category].push(amenity)
-      })
-    }
+    // Group amenities by category (all will be 'general' for now)
+    const amenitiesByCategory: Record<string, any[]> = {
+      'General': row.amenities || []
+    };
 
-    // Transform response
     const response = {
-      id: roomType.id,
-      name: roomType.name,
-      slug: roomType.slug,
-      description: roomType.description,
-      shortDescription: roomType.shortDescription,
-      basePrice: parseFloat(roomType.basePrice),
-      maxOccupancy: roomType.maxOccupancy,
-      bedType: roomType.bedType,
-      numberOfBeds: roomType.numberOfBeds,
-      roomSize: roomType.roomSize,
-      viewType: roomType.viewType,
-      isFeatured: roomType.isFeatured,
-      popularityScore: roomType.popularityScore,
-      status: roomType.status,
-      branch: roomType.branch,
-      images: roomType.images,
-      amenitiesByCategory,
-      availableRooms: rooms.length,
-      rooms,
-      createdAt: roomType.createdAt,
-      updatedAt: roomType.updatedAt,
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: response,
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      basePrice: parseFloat(row.basePrice),
+      maxOccupancy: row.maxOccupancy,
+      bedType: row.bedType,
+      numberOfBeds: row.numberOfBeds,
+      roomSize: parseFloat(row.roomSize),
+      viewType: row.viewType,
+      isFeatured: row.isFeatured,
+      branch: {
+        id: row.branchId,
+        name: row.branchName,
+        location: row.branchLocation,
+        phone: row.branchPhone,
+        email: row.branchEmail
       },
-      { status: 200 }
-    )
+      images: row.images || [],
+      amenities: row.amenities || [],
+      amenitiesByCategory,
+      availableRooms: parseInt(row.availableRooms)
+    };
+
+    console.log('[ROOM DETAILS API] Returning room details for:', row.name);
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('Error fetching room type:', error)
+    console.error('Get room details error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch room type' },
+      { error: 'Failed to fetch room details' },
       { status: 500 }
-    )
+    );
   }
 }

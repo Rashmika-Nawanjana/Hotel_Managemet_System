@@ -1,75 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { queryOne, transaction } from '@/lib/db-queries'
-import { generateVerificationToken } from '@/lib/auth'
-import { sendVerificationEmail } from '@/lib/email'
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { generateOtp } from '@/lib/authUtils';
+import { sendOtpEmail } from '@/lib/email';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { email } = body
+    const { email } = await request.json();
 
     if (!email) {
       return NextResponse.json(
         { error: 'Email is required' },
         { status: 400 }
-      )
+      );
     }
 
-    // Find user
-    const user = await queryOne(
-      'SELECT id, email, "firstName", "emailVerified" FROM users WHERE email = $1',
-      [email.toLowerCase()]
-    )
+    // Get user
+    const userResult = await pool.query(
+      'SELECT id, is_verified FROM users WHERE email = $1',
+      [email]
+    );
 
-    if (!user) {
+    if (userResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
-      )
+      );
     }
 
-    // Check if already verified
-    if (user.emailVerified) {
+    const user = userResult.rows[0];
+
+    if (user.is_verified) {
       return NextResponse.json(
-        { error: 'Email is already verified' },
+        { error: 'Email already verified' },
         { status: 400 }
-      )
+      );
     }
 
-    // Generate new token
-    const verificationToken = generateVerificationToken()
+    // Delete any existing OTPs for this user
+    await pool.query(
+      'DELETE FROM otps WHERE user_id = $1',
+      [user.id]
+    );
 
-    // Delete old unused tokens and create new one in a transaction
-    await transaction(async (client) => {
-      // Delete old unused tokens for this user
-      await client.query(
-        'DELETE FROM verification_tokens WHERE "userId" = $1 AND used = false',
-        [user.id]
-      )
+    // Generate new OTP
+    const otp = generateOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Create new verification token
-      await client.query(
-        `INSERT INTO verification_tokens (token, "userId", "expiresAt", "createdAt")
-         VALUES ($1, $2, $3, NOW())`,
-        [verificationToken, user.id, new Date(Date.now() + 24 * 60 * 60 * 1000)]
-      )
-    })
+    // Store OTP
+    await pool.query(
+      `INSERT INTO otps (user_id, otp_code, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, otp, expiresAt]
+    );
 
-    // Send verification email
-    await sendVerificationEmail(user.email, user.firstName, verificationToken)
+    // Send OTP email
+    await sendOtpEmail(email, otp);
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Verification email sent successfully',
-      },
-      { status: 200 }
-    )
+    return NextResponse.json({
+      success: true,
+      message: 'Verification code sent! Please check your email.'
+    });
   } catch (error) {
-    console.error('Resend verification error:', error)
+    console.error('Resend verification error:', error);
     return NextResponse.json(
-      { error: 'Failed to resend verification email' },
+      { error: 'Failed to send verification code' },
       { status: 500 }
-    )
+    );
   }
 }

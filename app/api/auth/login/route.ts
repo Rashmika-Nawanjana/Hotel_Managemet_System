@@ -1,171 +1,94 @@
-import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
-import { generateToken } from '@/lib/auth'
-import { queryOne, execute } from '@/lib/db-queries'
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { comparePassword } from '@/lib/authUtils';
+import { SignJWT } from 'jose';
 
-export async function POST(request: NextRequest) {
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+
+export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json()
+    const { email, password } = await request.json();
 
+    // Validation
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
         { status: 400 }
-      )
+      );
     }
 
-    console.log('Login attempt for email:', email)
+    // Get guest from database
+    const result = await pool.query(
+      `SELECT id, email, password_hash, first_name, last_name, phone, is_verified 
+       FROM guests 
+       WHERE email = $1`,
+      [email]
+    );
 
-    // Get user
-    const user = await queryOne<any>(`
-      SELECT 
-        id,
-        email,
-        password,
-        "firstName",
-        "lastName",
-        phone,
-        "dateOfBirth",
-        nationality,
-        "idType",
-        "idNumber",
-        address,
-        city,
-        "postalCode",
-        role,
-        status,
-        "emailVerified",
-        "twoFactorEnabled",
-        "lastLoginAt"
-      FROM users
-      WHERE email = $1
-    `, [email.toLowerCase()])
-
-    if (!user) {
+    if (result.rows.length === 0) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
-      )
+      );
     }
 
-    // ✅ Check if email is verified
-    if (!user.emailVerified) {
-      return NextResponse.json(
-        { 
-          error: 'Email not verified',
-          code: 'EMAIL_NOT_VERIFIED',
-          message: 'Please verify your email address before logging in. Check your inbox for the verification link.',
-          email: user.email
-        },
-        { status: 403 }
-      )
-    }
+    const guest = result.rows[0];
 
-    // Check if user is active
-    if (user.status !== 'ACTIVE') {
-      return NextResponse.json(
-        { error: 'Account is inactive. Please contact support.' },
-        { status: 403 }
-      )
-    }
+    // Note: Allow login without email verification for guests
+    // They can verify later in their profile
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password)
-    if (!isPasswordValid) {
+    const isValid = await comparePassword(password, guest.password_hash);
+    if (!isValid) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
-      )
+      );
     }
 
-    // Get profile based on role
-    let profile = null
-    if (user.role === 'GUEST') {
-      profile = await queryOne<any>(`
-        SELECT 
-          id,
-          "userId",
-          "loyaltyPoints",
-          "memberSince",
-          "totalBookings",
-          "totalSpent",
-          "preferredRoomType",
-          "preferredBedType",
-          "smokingPreference",
-          "floorPreference",
-          "pillowType",
-          newsletter,
-          "emailNotifications",
-          "smsNotifications"
-        FROM guest_profiles
-        WHERE "userId" = $1
-      `, [user.id])
-    } else if (user.role === 'STAFF' || user.role === 'ADMIN') {
-      profile = await queryOne<any>(`
-        SELECT 
-          id,
-          "userId",
-          "employeeId",
-          "branchId",
-          department,
-          position,
-          salary,
-          "hireDate",
-          rating,
-          "totalServices"
-        FROM staff_profiles
-        WHERE "userId" = $1
-      `, [user.id])
-    }
-
-    // Update last login time
-    await execute(`
-      UPDATE users 
-      SET "lastLoginAt" = NOW() 
-      WHERE id = $1
-    `, [user.id])
-
-    // Generate JWT token
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
+    // Create JWT token
+    const token = await new SignJWT({
+      userId: guest.id,
+      email: guest.email,
+      role: 'GUEST',
+      userType: 'GUEST',
+      name: `${guest.first_name} ${guest.last_name}`
     })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(JWT_SECRET);
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user
+    // Set cookie
+    const response = NextResponse.json({
+      success: true,
+      message: 'Login successful',
+      user: {
+        id: guest.id,
+        email: guest.email,
+        name: `${guest.first_name} ${guest.last_name}`,
+        phone: guest.phone,
+        role: 'GUEST',
+        isVerified: guest.is_verified
+      }
+    });
 
-    // Create response with cookie
-    const response = NextResponse.json(
-      {
-        success: true,
-        message: 'Login successful',
-        user: {
-          ...userWithoutPassword,
-          profile,
-        },
-        token,
-      },
-      { status: 200 }
-    )
-
-    // Set HTTP-only cookie
-    response.cookies.set('auth-token', token, {
+    response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
-    })
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/'
+    });
 
-    console.log('✅ Login successful for:', email)
-    return response
+    console.log('[GUEST LOGIN] Token cookie set for guest:', guest.id);
 
-  } catch (error: any) {
-    console.error('Login error:', error)
+    return response;
+  } catch (error) {
+    console.error('Login error:', error);
     return NextResponse.json(
       { error: 'An error occurred during login' },
       { status: 500 }
-    )
+    );
   }
 }

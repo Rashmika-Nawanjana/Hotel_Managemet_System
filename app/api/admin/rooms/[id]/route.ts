@@ -1,250 +1,114 @@
-import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
-import { verifyToken } from '@/lib/auth'
+import { NextResponse, NextRequest } from 'next/server';
+import pool from '@/lib/db';
+import { verifyAdmin } from '@/lib/adminAuth';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const token = request.cookies.get('auth-token')?.value
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded || (decoded.role !== 'ADMIN' && decoded.role !== 'STAFF')) {
-      return NextResponse.json(
-        { error: 'Forbidden - Admin access required' },
-        { status: 403 }
-      )
-    }
-
-    const { id } = await params
-
-    const roomType = await prisma.roomType.findUnique({
-      where: { id },
-      include: {
-        branch: true,
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        images: {
-          orderBy: {
-            order: 'asc',
-          },
-        },
-        rooms: {
-          select: {
-            id: true,
-            roomNumber: true,
-            floor: true,
-            status: true,
-          },
-        },
-      },
-    })
-
-    if (!roomType) {
-      return NextResponse.json({ error: 'Room type not found' }, { status: 404 })
-    }
-
-    // Group rooms by status
-    const roomsByStatus = roomType.rooms.reduce((acc, room) => {
-      if (!acc[room.status]) {
-        acc[room.status] = []
-      }
-      acc[room.status].push(room)
-      return acc
-    }, {} as Record<string, typeof roomType.rooms>)
-
-    const transformedRoomType = {
-      ...roomType,
-      basePrice: parseFloat(roomType.basePrice.toString()),
-      amenities: roomType.amenities.map((ra) => ra.amenity),
-      totalRooms: roomType.rooms.length,
-      roomsByStatus,
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: transformedRoomType,
-      },
-      { status: 200 }
-    )
-  } catch (error) {
-    console.error('Error fetching room type:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch room type' },
-      { status: 500 }
-    )
-  }
-}
-
+// PUT - Update room status (Admin only)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = request.cookies.get('auth-token')?.value
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const params = await context.params;
+    console.log('[ADMIN ROOMS API] PUT request received for room:', params.id);
+    
+    const admin = await verifyAdmin(request);
+    if (!admin) {
+      console.log('[ADMIN ROOMS API] Unauthorized - no admin token');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const decoded = verifyToken(token)
-    if (!decoded || decoded.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Forbidden - Admin access required' },
-        { status: 403 }
-      )
+    console.log('[ADMIN ROOMS API] Admin verified:', admin.email);
+
+    const { status } = await request.json();
+    const roomId = parseInt(params.id);
+
+    console.log('[ADMIN ROOMS API] Update request - Room ID:', roomId, 'New Status:', status);
+
+    // Validate status
+    const validStatuses = ['Available', 'Occupied', 'Maintenance', 'Cleaning'];
+    if (!validStatuses.includes(status)) {
+      console.log('[ADMIN ROOMS API] Invalid status:', status);
+      return NextResponse.json({ 
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+      }, { status: 400 });
     }
 
-    const { id } = await params
-    const body = await request.json()
+    // Update room status - cast to enum type explicitly
+    const result = await pool.query(
+      `UPDATE rooms 
+       SET status = $1::room_status_enum, 
+           updated_at = CURRENT_TIMESTAMP,
+           last_cleaned = CASE WHEN $1 = 'Available' THEN CURRENT_TIMESTAMP ELSE last_cleaned END
+       WHERE id = $2
+       RETURNING id, room_number, status, updated_at`,
+      [status, roomId]
+    );
 
-    const {
-      name,
-      description,
-      shortDescription,
-      basePrice,
-      maxOccupancy,
-      bedType,
-      numberOfBeds,
-      roomSize,
-      viewType,
-      status,
-      isFeatured,
-      amenityIds,
-      images,
-    } = body
-
-    const updateData: any = {}
-
-    if (name !== undefined) updateData.name = name
-    if (description !== undefined) updateData.description = description
-    if (shortDescription !== undefined) updateData.shortDescription = shortDescription
-    if (basePrice !== undefined) updateData.basePrice = parseFloat(basePrice)
-    if (maxOccupancy !== undefined) updateData.maxOccupancy = parseInt(maxOccupancy)
-    if (bedType !== undefined) updateData.bedType = bedType
-    if (numberOfBeds !== undefined) updateData.numberOfBeds = parseInt(numberOfBeds)
-    if (roomSize !== undefined) updateData.roomSize = parseInt(roomSize)
-    if (viewType !== undefined) updateData.viewType = viewType
-    if (status !== undefined) updateData.status = status
-    if (isFeatured !== undefined) updateData.isFeatured = isFeatured
-
-    if (amenityIds) {
-      await prisma.roomTypeAmenity.deleteMany({
-        where: { roomTypeId: id },
-      })
-
-      updateData.amenities = {
-        createMany: {
-          data: amenityIds.map((amenityId: string) => ({
-            amenityId,
-          })),
-        },
-      }
+    if (result.rows.length === 0) {
+      console.log('[ADMIN ROOMS API] Room not found:', roomId);
+      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    if (images) {
-      await prisma.roomImage.deleteMany({
-        where: { roomTypeId: id },
-      })
+    console.log(`[ADMIN ROOMS API] ✅ Success - Room ${result.rows[0].room_number} status updated to ${status} by admin ${admin.email}`);
 
-      updateData.images = {
-        createMany: {
-          data: images.map((image: any, index: number) => ({
-            url: image.url,
-            caption: image.caption || null,
-            altText: image.altText || null,
-            isPrimary: index === 0,
-            order: index + 1,
-          })),
-        },
-      }
-    }
-
-    const roomType = await prisma.roomType.update({
-      where: { id },
-      data: updateData,
-      include: {
-        branch: true,
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        images: true,
-      },
-    })
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Room type updated successfully',
-        data: roomType,
-      },
-      { status: 200 }
-    )
+    return NextResponse.json({
+      message: 'Room status updated successfully',
+      room: result.rows[0]
+    });
   } catch (error) {
-    console.error('Error updating room type:', error)
+    console.error('[ADMIN ROOMS API] ❌ Error updating room status:', error);
+    console.error('[ADMIN ROOMS API] Error details:', {
+      message: (error as Error).message,
+      stack: (error as Error).stack
+    });
     return NextResponse.json(
-      { error: 'Failed to update room type' },
+      { error: 'Failed to update room status', details: (error as Error).message },
       { status: 500 }
-    )
+    );
   }
 }
 
-export async function DELETE(
+// GET - Get single room details (Admin only)
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = request.cookies.get('auth-token')?.value
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const params = await context.params;
+    const admin = await verifyAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const decoded = verifyToken(token)
-    if (!decoded || decoded.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Forbidden - Admin access required' },
-        { status: 403 }
-      )
+    const roomId = parseInt(params.id);
+
+    const result = await pool.query(
+      `SELECT 
+        r.*,
+        rt.name as room_type_name,
+        rt.base_price,
+        rt.capacity,
+        rt.bed_type,
+        rt.size_sqm,
+        b.name as branch_name,
+        b.location as branch_location
+       FROM rooms r
+       JOIN room_types rt ON r.room_type_id = rt.id
+       JOIN branches b ON r.branch_id = b.id
+       WHERE r.id = $1`,
+      [roomId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    const { id } = await params
-
-    const roomCount = await prisma.room.count({
-      where: { roomTypeId: id },
-    })
-
-    if (roomCount > 0) {
-      return NextResponse.json(
-        { error: `Cannot delete room type with ${roomCount} rooms. Delete rooms first.` },
-        { status: 400 }
-      )
-    }
-
-    await prisma.roomType.delete({
-      where: { id },
-    })
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Room type deleted successfully',
-      },
-      { status: 200 }
-    )
+    return NextResponse.json({ room: result.rows[0] });
   } catch (error) {
-    console.error('Error deleting room type:', error)
+    console.error('[ADMIN] Get room error:', error);
     return NextResponse.json(
-      { error: 'Failed to delete room type' },
+      { error: 'Failed to fetch room', details: (error as Error).message },
       { status: 500 }
-    )
+    );
   }
 }

@@ -1,7 +1,7 @@
 // app/guest/search-rooms/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import GuestNavbar from '@/app/components/GuestNavbar'
@@ -11,17 +11,192 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from '@/components/ui/slider'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { BedDouble, Users, Star, ArrowRight } from 'lucide-react'
+import { 
+  BedDouble, Users, Star, ArrowRight, Loader2,
+  Wifi, Tv, Snowflake, ParkingCircle, Waves, Dumbbell,
+  Sparkles, UtensilsCrossed, Wine, Bell, Shirt, Lock,
+  Coffee, Home, Mountain, Bath, ShowerHead, Wind,
+  Phone, PenTool, Sofa, ShoppingBag, Sun, Shield
+} from 'lucide-react'
 
-// Mock Data
-const availableRooms = [
-    { id: 1, name: 'Deluxe Room, City View', branch: 'Sky Nest Colombo', price: 120, image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400', rating: 4.7, amenities: ['Free WiFi', 'Mini Bar'], capacity: 2, beds: 'King Size Bed' },
-    { id: 2, name: 'Ocean View Suite', branch: 'Sky Nest Galle', price: 200, image: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=400', rating: 4.9, amenities: ['Balcony', 'Living Area'], capacity: 3, beds: 'King Size Bed' },
-    { id: 3, name: 'Presidential Suite', branch: 'Sky Nest Kandy', price: 350, image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=400', rating: 5.0, amenities: ['Private Terrace', 'Jacuzzi'], capacity: 4, beds: 'King Size Bed + Sofa Bed' },
-];
+// Map icon names from database to Lucide React components
+const getAmenityIcon = (iconName: string) => {
+  const iconMap: Record<string, any> = {
+    'wifi': Wifi,
+    'tv': Tv,
+    'snowflake': Snowflake,
+    'parking': ParkingCircle,
+    'waves': Waves,
+    'dumbbell': Dumbbell,
+    'sparkles': Sparkles,
+    'utensils': UtensilsCrossed,
+    'wine': Wine,
+    'bell': Bell,
+    'shirt': Shirt,
+    'lock': Lock,
+    'coffee': Coffee,
+    'home': Home,
+    'mountain': Mountain,
+    'bath': Bath,
+    'shower': ShowerHead,
+    'wind': Wind,
+    'phone': Phone,
+    'pen': PenTool,
+    'sofa': Sofa,
+    'shopping-bag': ShoppingBag,
+    'shield': Shield,
+    'sun': Sun,
+  }
+  return iconMap[iconName?.toLowerCase()] || Home
+}
+
+interface Room {
+  id: number;
+  name: string;
+  description: string;
+  basePrice: number;
+  maxOccupancy: number;
+  bedType: string;
+  numberOfBeds: number;
+  roomSize: number;
+  viewType: string;
+  isFeatured: boolean;
+  branch: {
+    id: number;
+    name: string;
+    location: string;
+  };
+  images: Array<{
+    id: number;
+    url: string;
+    caption: string;
+    displayOrder: number;
+  }>;
+  amenities: Array<{
+    id: number;
+    name: string;
+    icon_name: string;
+  }>;
+  availableCount?: number;
+}
 
 export default function SearchRoomsPage() {
-  const [priceRange, setPriceRange] = useState([50, 500])
+  const [priceRange, setPriceRange] = useState([50, 300000])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selectedBranch, setSelectedBranch] = useState<string>('')
+  const [branches, setBranches] = useState<any[]>([])
+  const [selectedAmenities, setSelectedAmenities] = useState<number[]>([])
+  const [availableAmenities, setAvailableAmenities] = useState<any[]>([])
+  const [sortBy, setSortBy] = useState('recommended')
+  const [checkInDate, setCheckInDate] = useState('')
+  const [checkOutDate, setCheckOutDate] = useState('')
+  const [guests, setGuests] = useState(2)
+
+  useEffect(() => {
+    fetchRooms()
+    fetchAmenities()
+    fetchBranches()
+  }, [])
+
+  // Refetch rooms when filters change
+  useEffect(() => {
+    fetchRooms()
+  }, [priceRange, selectedAmenities, selectedBranch, sortBy])
+
+  const fetchBranches = async () => {
+    try {
+      const response = await fetch('/api/branches')
+      const data = await response.json()
+      setBranches(data.branches || [])
+    } catch (error) {
+      console.error('[FRONTEND] Error fetching branches:', error)
+    }
+  }
+
+  const formatPrice = (price: number) => {
+    return `$${price.toFixed(2)}`
+  }
+
+  const fetchAmenities = async () => {
+    try {
+      console.log('[FRONTEND] Fetching amenities...')
+      const response = await fetch('/api/amenities')
+      console.log('[FRONTEND] Amenities response status:', response.status)
+      const data = await response.json()
+      console.log('[FRONTEND] Amenities data:', data)
+      if (data.amenities) {
+        setAvailableAmenities(data.amenities)
+        console.log('[FRONTEND] Set amenities count:', data.amenities.length)
+      } else {
+        console.error('[FRONTEND] No amenities in response:', data)
+      }
+    } catch (error) {
+      console.error('[FRONTEND] Error fetching amenities:', error)
+    }
+  }
+
+  const fetchRooms = async () => {
+    setIsLoading(true)
+    setError('')
+    
+    try {
+      const params = new URLSearchParams()
+      if (priceRange[0] > 0) params.append('minPrice', priceRange[0].toString())
+      if (priceRange[1] < 500000) params.append('maxPrice', priceRange[1].toString())
+      if (selectedBranch) params.append('branchId', selectedBranch)
+      if (checkInDate) params.append('checkIn', checkInDate)
+      if (checkOutDate) params.append('checkOut', checkOutDate)
+      if (guests > 0) params.append('guests', guests.toString())
+      if (selectedAmenities.length > 0) {
+        params.append('amenities', selectedAmenities.join(','))
+      }
+      
+      console.log('[FRONTEND] Fetching rooms with params:', params.toString())
+      const response = await fetch(`/api/rooms?${params.toString()}`)
+      console.log('[FRONTEND] Rooms response status:', response.status)
+      const data = await response.json()
+      console.log('[FRONTEND] Rooms data:', data)
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch rooms')
+      }
+      
+      setRooms(data.rooms || [])
+      console.log('[FRONTEND] Set rooms count:', data.rooms?.length || 0)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load rooms'
+      console.error('[FRONTEND] Error fetching rooms:', err)
+      setError(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleApplyFilters = () => {
+    fetchRooms()
+  }
+
+  const toggleAmenity = (amenityId: number) => {
+    setSelectedAmenities(prev => 
+      prev.includes(amenityId)
+        ? prev.filter(id => id !== amenityId)
+        : [...prev, amenityId]
+    )
+  }
+
+  const getSortedRooms = () => {
+    const sortedRooms = [...rooms]
+    switch (sortBy) {
+      case 'price-asc':
+        return sortedRooms.sort((a, b) => a.basePrice - b.basePrice)
+      case 'price-desc':
+        return sortedRooms.sort((a, b) => b.basePrice - a.basePrice)
+      default:
+        return sortedRooms.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0))
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-t from-amber-700/30 to-amber-50 text-gray-800">
@@ -37,23 +212,103 @@ export default function SearchRoomsPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div>
-                        <Label className="text-sm font-semibold text-gray-700 block mb-2">Price Range</Label>
-                        <Slider defaultValue={[50, 500]} max={1000} step={10} onValueChange={(value) => setPriceRange(value)} />
+                        <Label className="text-sm font-semibold text-gray-700 block mb-2">Branch Location</Label>
+                        <Select value={selectedBranch || 'all'} onValueChange={(value) => setSelectedBranch(value === 'all' ? '' : value)}>
+                          <SelectTrigger className="w-full bg-white border-gray-300">
+                            <SelectValue placeholder="All Branches" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Branches</SelectItem>
+                            {branches.map(branch => (
+                              <SelectItem key={branch.id} value={branch.id.toString()}>
+                                {branch.name} - {branch.location}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label className="text-sm font-semibold text-gray-700 block mb-2">Check-in Date</Label>
+                        <input 
+                          type="date" 
+                          value={checkInDate}
+                          onChange={(e) => setCheckInDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                    </div>
+                    <div>
+                        <Label className="text-sm font-semibold text-gray-700 block mb-2">Check-out Date</Label>
+                        <input 
+                          type="date" 
+                          value={checkOutDate}
+                          onChange={(e) => setCheckOutDate(e.target.value)}
+                          min={checkInDate || new Date().toISOString().split('T')[0]}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                    </div>
+                    <div>
+                        <Label className="text-sm font-semibold text-gray-700 block mb-2">Number of Guests</Label>
+                        <Select value={guests.toString()} onValueChange={(value) => setGuests(parseInt(value))}>
+                          <SelectTrigger className="w-full bg-white border-gray-300">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[1, 2, 3, 4, 5, 6].map(num => (
+                              <SelectItem key={num} value={num.toString()}>{num} {num === 1 ? 'Guest' : 'Guests'}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <Label className="text-sm font-semibold text-gray-700">Price Range (per night)</Label>
+                        </div>
+                        <Slider 
+                          defaultValue={[50, 1000]} 
+                          max={1000} 
+                          step={10} 
+                          value={priceRange}
+                          onValueChange={(value) => setPriceRange(value)} 
+                        />
                         <div className="flex justify-between text-xs text-gray-600 mt-2">
-                            <span>${priceRange[0]}</span>
-                            <span>${priceRange[1]}</span>
+                            <span>{formatPrice(priceRange[0])}</span>
+                            <span>{formatPrice(priceRange[1])}</span>
                         </div>
                     </div>
                      <div>
                         <Label className="text-sm font-semibold text-gray-700 block mb-2">Amenities</Label>
-                        <div className="space-y-2">
-                           <div className="flex items-center space-x-2"><Checkbox id="pool"/><Label htmlFor="pool" className="text-sm">Swimming Pool</Label></div>
-                           <div className="flex items-center space-x-2"><Checkbox id="spa"/><Label htmlFor="spa" className="text-sm">Spa & Wellness</Label></div>
-                           <div className="flex items-center space-x-2"><Checkbox id="gym"/><Label htmlFor="gym" className="text-sm">Fitness Center</Label></div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {availableAmenities.length > 0 ? (
+                            availableAmenities.map((amenity) => {
+                              const IconComponent = getAmenityIcon(amenity.icon_name)
+                              return (
+                                <div key={amenity.id} className="flex items-center space-x-2">
+                                  <Checkbox 
+                                    id={`amenity-${amenity.id}`}
+                                    checked={selectedAmenities.includes(amenity.id)}
+                                    onCheckedChange={() => toggleAmenity(amenity.id)}
+                                  />
+                                  <Label 
+                                    htmlFor={`amenity-${amenity.id}`} 
+                                    className="text-sm cursor-pointer flex items-center gap-2"
+                                  >
+                                    <IconComponent size={16} className="text-amber-600" />
+                                    {amenity.name}
+                                  </Label>
+                                </div>
+                              )
+                            })
+                          ) : (
+                            <p className="text-xs text-gray-500">Loading amenities...</p>
+                          )}
                         </div>
                     </div>
                     <div>
-                      <Button className="w-full font-bold">Apply Filters</Button>
+                      <Button className="w-full font-bold" onClick={handleApplyFilters} disabled={isLoading}>
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Apply Filters
+                      </Button>
                     </div>
                 </CardContent>
               </Card>
@@ -65,9 +320,9 @@ export default function SearchRoomsPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 font-l">Available Rooms</h1>
-                <p className="text-gray-600">{availableRooms.length} rooms found</p>
+                <p className="text-gray-600">{rooms.length} rooms found</p>
               </div>
-              <Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[180px] bg-white/50 border-gray-300">
                     <SelectValue placeholder="Sort by: Recommended" />
                 </SelectTrigger>
@@ -79,51 +334,119 @@ export default function SearchRoomsPage() {
               </Select>
             </div>
             
-            <div className="space-y-6">
-              {availableRooms.map(room => (
-                <Card key={room.id} className="shadow-lg bg-white/60 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden group">
-                   <div className="flex">
-                      <div className="w-1/3 relative overflow-hidden">
-                         <Image src={room.image} alt={room.name} fill className="object-cover group-hover:scale-105 transition-transform duration-300"/>
-                      </div>
-                      <div className="w-2/3">
-                        <CardHeader>
-                            <div className="flex justify-between items-start">
+            {error && (
+              <div className="p-4 bg-red-100 text-red-700 rounded-lg mb-4">
+                {error}
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {getSortedRooms().map(room => (
+                  <Card key={room.id} className="shadow-lg bg-white/60 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden group">
+                    <div className="flex">
+                        <div className="w-1/3 ml-5 relative overflow-hidden h-64">
+                          {room.images && room.images.length > 0 ? (
+                            <Image 
+                              src={room.images[0].url} 
+                              alt={room.name} 
+                              fill 
+                              className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-amber-100 to-amber-200 flex flex-col items-center justify-center">
+                              <Home className="w-12 h-12 text-amber-600 mb-2" />
+                              <span className="text-amber-800 font-semibold">Sky Nest Hotels</span>
+                              <span className="text-amber-600 text-sm">Image Coming Soon</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="w-2/3">
+                          <CardHeader>
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <CardTitle className="text-xl font-bold text-gray-900">{room.name}</CardTitle>
+                                      <CardDescription>{room.branch.name} - {room.branch.location}</CardDescription>
+                                  </div>
+                                  {room.isFeatured && (
+                                    <div className="flex items-center space-x-1 text-amber-600 font-bold">
+                                        <Star size={16} className="fill-current" /><span>Featured</span>
+                                    </div>
+                                  )}
+                              </div>
+                          </CardHeader>
+                          <CardContent>
+                              <div className="text-sm text-gray-600 flex space-x-4 mb-4">
+                                  <span className="flex items-center"><Users size={14} className="mr-1.5"/> Up to {room.maxOccupancy} guests</span>
+                                  <span className="flex items-center"><BedDouble size={14} className="mr-1.5"/> {room.numberOfBeds} × {room.bedType}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {room.amenities.slice(0, 3).map(amenity => {
+                                  const IconComponent = getAmenityIcon(amenity.icon_name)
+                                  return (
+                                    <span key={amenity.id} className="px-2 py-1 bg-amber-100/50 text-amber-800 text-xs rounded-full flex items-center gap-1">
+                                      <IconComponent size={12} />
+                                      {amenity.name}
+                                    </span>
+                                  )
+                                })}
+                                {room.amenities.length > 3 && (
+                                  <span className="px-2 py-1 bg-gray-100/50 text-gray-600 text-xs rounded-full">
+                                    +{room.amenities.length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-end justify-between">
                                 <div>
-                                    <CardTitle className="text-xl font-bold text-gray-900">{room.name}</CardTitle>
-                                    <CardDescription>{room.branch}</CardDescription>
+                                    <p className="text-2xl font-bold text-gray-900">
+                                      {formatPrice(room.basePrice)}
+                                      <span className="text-sm font-normal text-gray-600">/night</span>
+                                    </p>
+                                    {checkInDate && checkOutDate && (() => {
+                                      const nights = Math.ceil((new Date(checkOutDate).getTime() - new Date(checkInDate).getTime()) / (1000 * 60 * 60 * 24))
+                                      const total = room.basePrice * nights
+                                      return nights > 0 ? (
+                                        <p className="text-sm text-amber-700 font-semibold">
+                                          Total: {formatPrice(total)} ({nights} {nights === 1 ? 'night' : 'nights'})
+                                        </p>
+                                      ) : null
+                                    })()}
+                                    {room.availableCount !== undefined && (
+                                      <p className="text-xs text-gray-500">{room.availableCount} rooms available</p>
+                                    )}
                                 </div>
-                                <div className="flex items-center space-x-1 text-amber-600 font-bold">
-                                    <Star size={16}/><span>{room.rating}</span>
+                                <div className="flex gap-2">
+                                  <Link href={`/guest/room-details/${room.id}`} passHref>
+                                      <Button variant="outline" className="font-bold border-amber-600 text-amber-700 hover:bg-amber-50">
+                                          View Details
+                                      </Button>
+                                  </Link>
+                                  {checkInDate && checkOutDate && (
+                                    <Link href={`/guest/booking/create?roomId=${room.id}&checkIn=${checkInDate}&checkOut=${checkOutDate}&guests=${guests}`} passHref>
+                                        <Button className="font-bold group-hover:bg-amber-600">
+                                            Book Now <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform"/>
+                                        </Button>
+                                    </Link>
+                                  )}
                                 </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-sm text-gray-600 flex space-x-4 mb-4">
-                                <span className="flex items-center"><Users size={14} className="mr-1.5"/> Up to {room.capacity} guests</span>
-                                <span className="flex items-center"><BedDouble size={14} className="mr-1.5"/> {room.beds}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2 mb-4">
-                               {room.amenities.map(amenity => (
-                                   <span key={amenity} className="px-2 py-1 bg-amber-100/50 text-amber-800 text-xs rounded-full">{amenity}</span>
-                               ))}
-                            </div>
-                            <div className="flex items-end justify-between">
-                               <div>
-                                   <p className="text-2xl font-bold text-gray-900">${room.price}<span className="text-sm font-normal text-gray-600">/night</span></p>
-                               </div>
-                               <Link href={`/guest/room-details/${room.id}`} passHref>
-                                  <Button className="font-bold group-hover:bg-amber-600">
-                                      View Details <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform"/>
-                                  </Button>
-                                </Link>
-                            </div>
-                        </CardContent>
-                      </div>
-                   </div>
-                </Card>
-              ))}
-            </div>
+                              </div>
+                          </CardContent>
+                        </div>
+                    </div>
+                  </Card>
+                ))}
+                {!isLoading && rooms.length === 0 && (
+                  <div className="text-center py-12 text-gray-500">
+                    <p className="text-lg">No rooms found matching your criteria.</p>
+                    <p className="text-sm mt-2">Try adjusting your filters.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </main>

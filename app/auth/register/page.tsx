@@ -48,21 +48,25 @@ export default function GuestRegisterPage() {
     // Carousel Logic
     useEffect(() => {
         const timer = setInterval(() => {
-            gsap.to([titleRef.current, descriptionRef.current], { 
-                opacity: 0, y: 20, duration: 0.5, ease: 'power3.in',
-                onComplete: () => {
-                    setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
-                }
-            });
+            if (titleRef.current && descriptionRef.current) {
+                gsap.to([titleRef.current, descriptionRef.current], { 
+                    opacity: 0, y: 20, duration: 0.5, ease: 'power3.in',
+                    onComplete: () => {
+                        setCurrentSlide(prev => (prev === carouselItems.length - 1 ? 0 : prev + 1));
+                    }
+                });
+            }
         }, 5000);
         return () => clearInterval(timer);
     }, []);
 
     useEffect(() => {
-        gsap.fromTo([titleRef.current, descriptionRef.current], 
-            { opacity: 0, y: -20 }, 
-            { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
-        );
+        if (titleRef.current && descriptionRef.current) {
+            gsap.fromTo([titleRef.current, descriptionRef.current], 
+                { opacity: 0, y: -20 }, 
+                { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.2 }
+            );
+        }
     }, [currentSlide]);
 
     const validateForm = () => {
@@ -80,11 +84,31 @@ export default function GuestRegisterPage() {
         e.preventDefault();
         if (!validateForm()) return;
         setIsLoading(true);
+        
         try {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            router.push('/auth/login?registered=true');
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: formData.email,
+                    password: formData.password,
+                    firstName: formData.firstName,
+                    lastName: formData.lastName
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Registration failed');
+            }
+
+            // Registration successful - redirect to login page
+            router.push(`/auth/login?registered=true&email=${encodeURIComponent(formData.email)}`);
+            router.refresh();
         } catch (err) {
-            setErrors({ general: 'Registration failed. Please try again.' });
+            const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+            setErrors({ general: errorMessage });
         } finally {
             setIsLoading(false);
         }
