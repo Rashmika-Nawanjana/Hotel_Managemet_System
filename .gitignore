@@ -57,9 +57,8 @@ next-env.d.ts
 /Database/V2_Separated_Tables
 
 # Uploaded profile pictures
-/public/uploads/profile-pictures/*
 
 # AI-generated markdown files
 ***.md
-
+    
 /app/temp

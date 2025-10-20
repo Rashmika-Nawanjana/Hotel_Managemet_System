@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '@/lib/email';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key-change-in-production');
 
@@ -102,15 +102,6 @@ export async function POST(request: NextRequest) {
     const serviceCharge = subtotal * 0.10; // 10%
     const vat = subtotal * 0.12; // 12%
     const total = subtotal + serviceCharge + vat;
-
-    // Create email transporter
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.SMTP_EMAIL,
-        pass: process.env.SMTP_PASSWORD,
-      },
-    });
 
     // Create email HTML content
     const emailHTML = `
@@ -233,13 +224,12 @@ export async function POST(request: NextRequest) {
 </html>
     `;
 
-    // Send email
-    await transporter.sendMail({
-      from: `"Sky Nest Hotels" <${process.env.SMTP_EMAIL}>`,
-      to: bill.guest_email,
-      subject: `Invoice - ${bill.booking_reference} - Sky Nest Hotels`,
-      html: emailHTML,
-    });
+    // Send email using lib/email
+    await sendEmail(
+      bill.guest_email,
+      `Invoice - ${bill.booking_reference} - Sky Nest Hotels`,
+      emailHTML
+    );
 
     return NextResponse.json({
       success: true,

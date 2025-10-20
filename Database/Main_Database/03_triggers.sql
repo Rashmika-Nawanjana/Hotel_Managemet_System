@@ -179,6 +179,81 @@ CREATE TRIGGER trigger_clean_expired_otps
     EXECUTE FUNCTION clean_expired_otps();
 
 -- ============================================================================
+-- AUTOMATED TRIGGERS AND FUNCTIONS FOR FLEXIBLE PAYMENT SYSTEM
+-- ============================================================================
+
+-- Function to automatically calculate outstanding_amount
+CREATE OR REPLACE FUNCTION calculate_outstanding_amount()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Calculate total_amount as base + services
+    NEW.total_amount := COALESCE(NEW.base_amount, 0) + COALESCE(NEW.services_amount, 0);
+    
+    -- Calculate outstanding as total - paid
+    NEW.outstanding_amount := NEW.total_amount - COALESCE(NEW.paid_amount, 0);
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-calculate amounts on insert/update
+CREATE TRIGGER trigger_calculate_outstanding
+    BEFORE INSERT OR UPDATE ON bookings
+    FOR EACH ROW
+    EXECUTE FUNCTION calculate_outstanding_amount();
+
+-- Function to update booking paid_amount when payments are made
+CREATE OR REPLACE FUNCTION update_booking_paid_amount()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update the booking's paid_amount based on sum of all successful payments
+    UPDATE bookings
+    SET paid_amount = (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM payments
+        WHERE booking_id = NEW.booking_id
+        AND payment_status = 'Completed'
+    )
+    WHERE id = NEW.booking_id;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-update booking paid_amount when payment is made
+CREATE TRIGGER trigger_update_booking_payment
+    AFTER INSERT OR UPDATE ON payments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_booking_paid_amount();
+
+-- Function to update booking services_amount when services are added
+CREATE OR REPLACE FUNCTION update_booking_services_amount()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update the booking's services_amount based on sum of all service usage
+    UPDATE bookings
+    SET services_amount = (
+        SELECT COALESCE(SUM(price_at_time * quantity), 0)
+        FROM service_usage
+        WHERE booking_id = COALESCE(NEW.booking_id, OLD.booking_id)
+    )
+    WHERE id = COALESCE(NEW.booking_id, OLD.booking_id);
+    
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-update booking services_amount when services change
+CREATE TRIGGER trigger_update_booking_services
+    AFTER INSERT OR UPDATE OR DELETE ON service_usage
+    FOR EACH ROW
+    EXECUTE FUNCTION update_booking_services_amount();
+
+-- ============================================================================
+-- END OF TRIGGERS AND FUNCTIONS
+-- ============================================================================
+
+-- ============================================================================
 -- TRIGGER DOCUMENTATION
 -- ============================================================================
 

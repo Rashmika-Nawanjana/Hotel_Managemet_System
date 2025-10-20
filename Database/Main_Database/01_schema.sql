@@ -206,7 +206,11 @@ CREATE TABLE bookings (
     check_out_date DATE NOT NULL,
     number_of_guests INT NOT NULL DEFAULT 1,
     status booking_status_enum DEFAULT 'Pending',
-    total_amount DECIMAL(10,2) NOT NULL,
+    base_amount DECIMAL(10,2) NOT NULL, -- Room cost only (price × nights)
+    services_amount DECIMAL(10,2) DEFAULT 0.00, -- Additional services total
+    total_amount DECIMAL(10,2) NOT NULL, -- base_amount + services_amount (auto-calculated)
+    paid_amount DECIMAL(10,2) DEFAULT 0.00, -- Sum of completed payments (auto-calculated)
+    outstanding_amount DECIMAL(10,2), -- total_amount - paid_amount (auto-calculated)
     special_requests TEXT,
     checked_in_at TIMESTAMP WITH TIME ZONE,
     checked_out_at TIMESTAMP WITH TIME ZONE,
@@ -223,6 +227,7 @@ CREATE TABLE payments (
     amount DECIMAL(10,2) NOT NULL,
     payment_method payment_method_enum NOT NULL,
     payment_status payment_status_enum DEFAULT 'Pending',
+    payment_type VARCHAR(50) DEFAULT 'full', -- reservation_fee, partial, full, service_payment
     transaction_id VARCHAR(255),
     paid_at TIMESTAMP WITH TIME ZONE,
     refunded_at TIMESTAMP WITH TIME ZONE,
@@ -371,6 +376,9 @@ CREATE INDEX idx_maintenance_logs_room ON maintenance_logs(room_id);
 CREATE INDEX idx_maintenance_assigned_staff ON maintenance_logs(assigned_to_staff_id);
 CREATE INDEX idx_maintenance_reported_by_guest ON maintenance_logs(reported_by_guest_id);
 CREATE INDEX idx_maintenance_reported_by_staff ON maintenance_logs(reported_by_staff_id);
+CREATE INDEX idx_bookings_outstanding ON bookings(outstanding_amount);
+CREATE INDEX idx_payments_status ON payments(payment_status);
+
 
 -- Comments for documentation
 COMMENT ON TABLE admins IS 'System administrators with full access';
@@ -384,3 +392,9 @@ COMMENT ON COLUMN maintenance_logs.reported_by_staff_id IS 'Foreign key to staff
 COMMENT ON COLUMN maintenance_logs.reported_by_guest_id IS 'Foreign key to guests table for guest who reported the issue';
 COMMENT ON TABLE service_usage IS 'Tracks chargeable services consumed during guest stays (room service, spa, laundry, minibar, etc.)';
 COMMENT ON COLUMN service_usage.price_at_time IS 'Price of service at time of usage - may differ from current catalog price';
+COMMENT ON COLUMN bookings.base_amount IS 'Base cost of room (price per night × number of nights)';
+COMMENT ON COLUMN bookings.services_amount IS 'Total cost of additional services - automatically calculated from service_usage';
+COMMENT ON COLUMN bookings.total_amount IS 'Total amount due (base_amount + services_amount) - automatically calculated';
+COMMENT ON COLUMN bookings.paid_amount IS 'Amount already paid - automatically calculated from payments table';
+COMMENT ON COLUMN bookings.outstanding_amount IS 'Amount still owed (total_amount - paid_amount) - automatically calculated';
+COMMENT ON COLUMN payments.payment_type IS 'Type of payment: reservation_fee, partial, full, service_payment';

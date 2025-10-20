@@ -33,20 +33,23 @@ export default function ExperienceTiles() {
 
   const experiences = [
     { 
-      title: "Urban Oasis: Colombo", 
+      title: "Urban Oasis",
+      location: "Colombo",
       description: "Immerse yourself in the vibrant heart of the city. Perfect for business travelers and cultural explorers seeking five-star luxury amidst urban energy.", 
-      image: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2070&auto-format&fit=crop",
+      image: "https://plus.unsplash.com/premium_photo-1674309438579-587b58d8486e?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=725",
       lit: "bg-gradient-to-l from-yellow-800/35 to-transparent"
 
     },
     { 
-      title: "Highland Retreat: Kandy", 
+      title: "Highland Retreat", 
+      location: "Kandy",
       description: "Escape to a serene sanctuary in the mist-covered hills. A perfect blend of nature, culture, and tranquility with breathtaking views.", 
       image: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?q=80&w=2070&auto-format&fit=crop",
       lit: "bg-gradient-to-l from-yellow-800/35 via-yellow-800/15 to-yellow-800/33"
     },
     { 
-      title: "Coastal Chronicle: Galle", 
+      title: "Coastal Chronicle", 
+      location: "Galle",
       description: "Step back in time within a historic fort. Experience colonial charm, stunning ocean vistas, and the relaxing rhythm of coastal life.", 
       image: "https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?q=80&w=1974&auto-format&fit=crop",
       lit: "bg-gradient-to-r from-yellow-800/33 to-transparent" 
@@ -57,8 +60,8 @@ export default function ExperienceTiles() {
     <section className="py-20 px-6 bg-[#181d28]">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4 text-white">Tailor Your Experience</h2>
-          <p className="text-xl text-gray-400 max-w-3xl mx-auto">Choose the destination that inspires your next journey.</p>
+          <h2 className="text-4xl font-l text-amber-400 font-medium mb-4">Tailor Your Experience</h2>
+          <p className="text-xl font-l text-gray-400 max-w-3xl mx-auto">Choose the destination that inspires your next journey.</p>
         </div>
         <div className="flex h-[600px] overflow-hidden" onMouseLeave={() => setHoveredExperience(null)}>
           {experiences.map((exp, index) => {
@@ -77,11 +80,11 @@ export default function ExperienceTiles() {
                     src={exp.image} 
                     fill 
                     alt={exp.title} 
-                    className="absolute inset-0 z-0 object-cover transition-all duration-700 ease-in-out opacity-60 blur-sm brightness-75" 
+                    className="absolute inset-0 z-0 object-cover transition-all duration-700 ease-in-out opacity-60 brightness-75" 
                     style={{ transform: isHovered ? 'scale(1.05)' : 'scale(1.2)'}}
                   />
-                  <div className={`absolute inset-0 bg-black/20 transition-all duration-500 ${isHovered ? exp.lit  : ''}`}></div>
-                  <div className="relative z-10 flex flex-col h-full text-white">
+                  <div className={`absolute inset-0 backdrop-blur-sm mask-b-from-30% bg-black/20 transition-all duration-500 ${isHovered ? exp.lit  : ''}`}></div>
+                  <div className="relative w-full z-10 flex flex-col h-full text-white">
                     <h3 className="text-3xl font-bold mb-4">{exp.title}</h3>
                     <p ref={el => { textRefs.current[index] = el; }} className="opacity-0">
                       {exp.description}

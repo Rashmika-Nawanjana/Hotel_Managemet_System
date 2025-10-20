@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create a new booking
+// POST - Create a new booking with flexible payment options
 export async function POST(request: NextRequest) {
   try {
     const guest = await verifyGuest(request);
@@ -114,7 +114,16 @@ export async function POST(request: NextRequest) {
 
     const guestId = guest.userId as number;
     const body = await request.json();
-    const { room_id, check_in_date, check_out_date, number_of_guests, special_requests } = body;
+    const { 
+      room_id, 
+      check_in_date, 
+      check_out_date, 
+      number_of_guests, 
+      special_requests,
+      payment_option, // 'full', 'reservation_fee', or 'pay_later'
+      payment_amount, // Amount to pay now (if any)
+      payment_method  // Payment method if paying now
+    } = body;
 
     // Validation
     if (!room_id || !check_in_date || !check_out_date) {
@@ -197,20 +206,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate total amount (nights × base_price)
+    // Calculate base amount (nights × base_price)
     const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-    const total_amount = room.base_price * nights;
+    const base_amount = room.base_price * nights;
 
     // Generate booking reference
     const timestamp = Date.now();
     const booking_reference = `BK-${timestamp.toString().slice(-8)}-${room_id}`;
 
-    // Create booking
+    // Determine booking status based on payment option
+    let bookingStatus = 'Pending'; // Default status
+    
+    // Create booking with new flexible payment columns
     const bookingResult = await pool.query(
       `INSERT INTO bookings 
         (booking_reference, guest_id, room_id, check_in_date, check_out_date, 
-         number_of_guests, status, total_amount, special_requests, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7, $8, CURRENT_TIMESTAMP)
+         number_of_guests, status, base_amount, services_amount, special_requests, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, $9, CURRENT_TIMESTAMP)
        RETURNING *`,
       [
         booking_reference,
@@ -219,12 +231,52 @@ export async function POST(request: NextRequest) {
         check_in_date,
         check_out_date,
         number_of_guests || 1,
-        total_amount,
+        bookingStatus,
+        base_amount,
         special_requests || null
       ]
     );
 
     const booking = bookingResult.rows[0];
+
+    // Handle payment if payment option is provided
+    let paymentResult = null;
+    if (payment_option && payment_option !== 'pay_later' && payment_amount && payment_method) {
+      try {
+        // Determine payment type
+        const payment_type = payment_option === 'reservation_fee' ? 'reservation_fee' : 
+                           payment_option === 'full' ? 'full' : 'partial';
+
+        // Create payment record
+        const paymentInsert = await pool.query(
+          `INSERT INTO payments 
+            (booking_id, amount, payment_method, payment_status, payment_type, paid_at, notes)
+           VALUES ($1, $2, $3::payment_method_enum, 'Completed', $4, CURRENT_TIMESTAMP, $5)
+           RETURNING *`,
+          [
+            booking.id,
+            payment_amount,
+            payment_method,
+            payment_type,
+            payment_option === 'reservation_fee' ? 'Reservation fee payment' : 'Booking payment'
+          ]
+        );
+
+        paymentResult = paymentInsert.rows[0];
+
+        // Update booking status if full payment made
+        if (payment_option === 'full' && payment_amount >= base_amount) {
+          await pool.query(
+            `UPDATE bookings SET status = 'Confirmed' WHERE id = $1`,
+            [booking.id]
+          );
+          bookingStatus = 'Confirmed';
+        }
+      } catch (paymentError) {
+        console.error('[CREATE BOOKING] Payment processing error:', paymentError);
+        // Continue even if payment fails - booking is created
+      }
+    }
 
     // Get guest details for email
     const guestResult = await pool.query(
@@ -232,6 +284,13 @@ export async function POST(request: NextRequest) {
       [guestId]
     );
     const guestData = guestResult.rows[0];
+
+    // Get updated booking with calculated amounts
+    const updatedBookingResult = await pool.query(
+      `SELECT * FROM bookings WHERE id = $1`,
+      [booking.id]
+    );
+    const updatedBooking = updatedBookingResult.rows[0];
 
     // Send confirmation email (async, don't wait for it)
     if (guestData.email) {
@@ -246,7 +305,7 @@ export async function POST(request: NextRequest) {
           checkOut: check_out_date,
           nights: nights,
           guests: number_of_guests || 1,
-          totalAmount: `LKR ${total_amount.toLocaleString()}`,
+          totalAmount: `USD ${updatedBooking.total_amount.toLocaleString()}`,
           specialRequests: special_requests || undefined,
           branchName: room.branch_name,
           branchAddress: room.branch_address
@@ -259,18 +318,33 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Booking created successfully',
+      message: payment_option === 'pay_later' 
+        ? 'Booking created successfully. Payment can be made later.'
+        : payment_option === 'reservation_fee'
+        ? 'Booking created with reservation fee paid. Remaining balance can be paid later.'
+        : 'Booking confirmed with full payment.',
       booking: {
-        id: booking.id,
-        booking_reference: booking.booking_reference,
+        id: updatedBooking.id,
+        booking_reference: updatedBooking.booking_reference,
         room_number: room.room_number,
         room_type: room.room_type,
-        check_in_date: booking.check_in_date,
-        check_out_date: booking.check_out_date,
-        number_of_guests: booking.number_of_guests,
+        check_in_date: updatedBooking.check_in_date,
+        check_out_date: updatedBooking.check_out_date,
+        number_of_guests: updatedBooking.number_of_guests,
         nights: nights,
-        total_amount: booking.total_amount,
-        status: booking.status
+        base_amount: parseFloat(updatedBooking.base_amount),
+        services_amount: parseFloat(updatedBooking.services_amount),
+        total_amount: parseFloat(updatedBooking.total_amount),
+        paid_amount: parseFloat(updatedBooking.paid_amount),
+        outstanding_amount: parseFloat(updatedBooking.outstanding_amount),
+        status: bookingStatus,
+        payment: paymentResult ? {
+          id: paymentResult.id,
+          payment_reference: paymentResult.payment_reference,
+          amount: parseFloat(paymentResult.amount),
+          payment_type: paymentResult.payment_type,
+          payment_method: paymentResult.payment_method
+        } : null
       }
     }, { status: 201 });
 

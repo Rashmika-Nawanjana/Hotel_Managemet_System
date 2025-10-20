@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         ml.issue_description,
         ml.priority,
         ml.status,
-        ml.assigned_to,
+        ml.assigned_to_staff_id,
         ml.resolved_at,
         ml.created_at,
         ml.updated_at,
@@ -52,12 +52,14 @@ export async function GET(request: NextRequest) {
         br.name as branch_name,
         b.booking_reference,
         b.check_in_date,
-        b.check_out_date
+        b.check_out_date,
+        assigned_staff.first_name || ' ' || assigned_staff.last_name as assigned_to_name
       FROM maintenance_logs ml
       JOIN rooms r ON ml.room_id = r.id
       JOIN room_types rt ON r.room_type_id = rt.id
       JOIN branches br ON r.branch_id = br.id
       JOIN bookings b ON b.room_id = r.id
+      LEFT JOIN staff assigned_staff ON ml.assigned_to_staff_id = assigned_staff.id
       WHERE b.guest_id = $1 
         AND b.status IN ('Confirmed', 'CheckedIn')
         AND b.check_in_date <= CURRENT_DATE
@@ -139,13 +141,14 @@ export async function POST(request: NextRequest) {
     // Create maintenance request
     const result = await pool.query(
       `INSERT INTO maintenance_logs 
-        (room_id, issue_description, priority, status, reported_by_staff_id, notes)
-      VALUES ($1, $2, $3::request_priority_enum, 'Pending', NULL, $4)
+        (room_id, issue_description, priority, status, reported_by_guest_id, notes)
+      VALUES ($1, $2, $3::request_priority_enum, 'Pending', $4, $5)
       RETURNING id, log_reference, issue_description, priority, status, created_at`,
       [
         booking.room_id,
         issue_description,
         priority,
+        guestId,
         `Reported by guest for booking ${booking.booking_reference}`
       ]
     );

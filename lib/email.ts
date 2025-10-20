@@ -1,9 +1,9 @@
 import nodemailer from 'nodemailer';
 import path from 'path';
 
-// Read environment variables
-const SMTP_EMAIL = process.env.SMTP_EMAIL || 'your-email@example.com';
-const SMTP_PASSWORD = process.env.SMTP_PASSWORD || 'your-email-password';
+// Read environment variables - Using same variables as emailService for consistency
+const SMTP_EMAIL = process.env.SMTP_EMAIL || process.env.SMTP_USER || 'your-email@example.com';
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || 'your-email-password';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 // Nodemailer Transporter Setup
