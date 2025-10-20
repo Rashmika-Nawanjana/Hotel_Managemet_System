@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate payment method
-    const validMethods = ['Cash', 'CreditCard', 'DebitCard', 'BankTransfer', 'OnlinePayment'];
+  // Align with payment_method_enum in DB: ('CreditCard','DebitCard','Cash','BankTransfer','Online')
+  const validMethods = ['Cash', 'CreditCard', 'DebitCard', 'BankTransfer', 'Online'];
     if (finalMethod && !validMethods.includes(finalMethod)) {
       return NextResponse.json(
         { error: 'Invalid payment method' },
@@ -162,9 +163,9 @@ export async function GET(request: NextRequest) {
     }
 
     // If guest, verify they own the booking
-    if (payload.role === 'Guest') {
+    if (typeof payload.role === 'string' && payload.role.toLowerCase() === 'guest') {
       const bookingCheck = await pool.query(
-        'SELECT user_id FROM bookings WHERE id = $1',
+        'SELECT guest_id FROM bookings WHERE id = $1',
         [bookingId]
       );
 
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      if (bookingCheck.rows[0].user_id !== payload.userId) {
+      if (bookingCheck.rows[0].guest_id !== payload.userId) {
         return NextResponse.json(
           { error: 'Access denied' },
           { status: 403 }
@@ -190,7 +191,7 @@ export async function GET(request: NextRequest) {
         amount,
         payment_method,
         transaction_id,
-        status,
+        payment_status,
         notes,
         created_at
        FROM payments
@@ -200,7 +201,10 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
-      payments: result.rows
+      payments: result.rows.map((p) => ({
+        ...p,
+        amount: parseFloat(p.amount)
+      }))
     });
   } catch (error) {
     console.error('Get payments error:', error);

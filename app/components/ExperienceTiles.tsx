@@ -36,7 +36,7 @@ export default function ExperienceTiles() {
       title: "Urban Oasis",
       location: "Colombo",
       description: "Immerse yourself in the vibrant heart of the city. Perfect for business travelers and cultural explorers seeking five-star luxury amidst urban energy.", 
-      image: "https://plus.unsplash.com/premium_photo-1674309438579-587b58d8486e?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=725",
+      image: "https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=1170",
       lit: "bg-gradient-to-l from-yellow-800/35 to-transparent"
 
     },
@@ -60,7 +60,7 @@ export default function ExperienceTiles() {
     <section className="py-20 px-6 bg-[#181d28]">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-l text-amber-400 font-medium mb-4">Tailor Your Experience</h2>
+          <h2 className="text-6xl font-l text-amber-400 font-semibold mb-4">Tailor Your Experience</h2>
           <p className="text-xl font-l text-gray-400 max-w-3xl mx-auto">Choose the destination that inspires your next journey.</p>
         </div>
         <div className="flex h-[600px] overflow-hidden" onMouseLeave={() => setHoveredExperience(null)}>
@@ -83,10 +83,13 @@ export default function ExperienceTiles() {
                     className="absolute inset-0 z-0 object-cover transition-all duration-700 ease-in-out opacity-60 brightness-75" 
                     style={{ transform: isHovered ? 'scale(1.05)' : 'scale(1.2)'}}
                   />
-                  <div className={`absolute inset-0 backdrop-blur-sm mask-b-from-30% bg-black/20 transition-all duration-500 ${isHovered ? exp.lit  : ''}`}></div>
+                  <div className={`absolute inset-0 backdrop-blur-lg mask-b-from-20% mask-b-to-100% bg-black/20 transition-all duration-500 ${isHovered ? exp.lit  : ''}`}>
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent"></div>
+                  </div>
                   <div className="relative w-full z-10 flex flex-col h-full text-white">
-                    <h3 className="text-3xl font-bold mb-4">{exp.title}</h3>
-                    <p ref={el => { textRefs.current[index] = el; }} className="opacity-0">
+                    <h3 className="text-3xl text-center font-l text-amber-400 font-medium mt-2">{exp.title}</h3>
+                    <h3 className="text-lg text-center font-l font-light mb-4">{exp.location}</h3>
+                    <p ref={el => { textRefs.current[index] = el; }} className="text-center font-l font-extralight opacity-0">
                       {exp.description}
                     </p>
                   </div>

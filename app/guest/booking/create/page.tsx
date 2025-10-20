@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Calendar, Users, Loader2, BedDouble, MapPin, DollarSign, Clock, AlertCircle, Home } from 'lucide-react'
+import { Calendar, Users, Loader2, BedDouble, MapPin, DollarSign, Clock, AlertCircle, Home, CheckCircle2, XCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 interface RoomDetails {
   id: number
@@ -31,6 +32,22 @@ interface RoomDetails {
   }>
 }
 
+interface AvailabilityInfo {
+  available: boolean
+  message: string
+  reason?: string
+  conflicting_bookings?: Array<{
+    booking_reference: string
+    check_in: string
+    check_out: string
+    status: string
+  }>
+  booking_details?: {
+    nights: number
+    base_amount: number
+  }
+}
+
 function BookingCreateContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -45,6 +62,8 @@ function BookingCreateContent() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [specialRequests, setSpecialRequests] = useState('')
+  const [availability, setAvailability] = useState<AvailabilityInfo | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
   
   useEffect(() => {
     if (roomId) {
@@ -54,6 +73,12 @@ function BookingCreateContent() {
       setLoading(false)
     }
   }, [roomId])
+
+  useEffect(() => {
+    if (roomId && checkIn && checkOut) {
+      checkAvailability()
+    }
+  }, [roomId, checkIn, checkOut])
   
   const fetchRoomDetails = async () => {
     try {
@@ -76,6 +101,37 @@ function BookingCreateContent() {
     }
   }
   
+  const checkAvailability = async () => {
+    if (!roomId || !checkIn || !checkOut) return
+    
+    setCheckingAvailability(true)
+    setError('')
+    
+    try {
+      const response = await fetch('/api/guest/rooms/check-availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: parseInt(roomId),
+          check_in_date: checkIn,
+          check_out_date: checkOut
+        })
+      })
+      
+      const data = await response.json()
+      setAvailability(data)
+      
+      if (!data.available) {
+        setError(data.reason || 'Room is not available for the selected dates')
+      }
+    } catch (err) {
+      console.error('Error checking availability:', err)
+      setError('Failed to check room availability')
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
+
   const calculateNights = () => {
     if (!checkIn || !checkOut) return 0
     const checkInDate = new Date(checkIn)
@@ -86,84 +142,30 @@ function BookingCreateContent() {
   const calculateTotal = () => {
     if (!room) return 0
     const nights = calculateNights()
-    const subtotal = room.basePrice * nights
-    const serviceFee = Math.round(subtotal * 0.1 * 100) / 100
-    return subtotal + serviceFee
+    return room.basePrice * nights
   }
   
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!roomId || !checkIn || !checkOut || !room) {
+  const handleProceedToPayment = () => {
+    if (!roomId || !checkIn || !checkOut) {
       setError('Missing required booking information')
       return
     }
-    
-    // Validate dates are not in the past
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const checkInDate = new Date(checkIn)
-    checkInDate.setHours(0, 0, 0, 0)
-    
-    if (checkInDate < today) {
-      setError('Check-in date cannot be in the past')
+
+    if (!availability?.available) {
+      setError('Cannot proceed - room is not available for selected dates')
       return
     }
     
-    setSubmitting(true)
-    setError('')
+    // Redirect to payment options page
+    const params = new URLSearchParams({
+      roomId: roomId,
+      checkIn: checkIn,
+      checkOut: checkOut,
+      guests: guests || '1',
+      specialRequests: specialRequests.trim()
+    })
     
-    try {
-      console.log('[BOOKING CREATE] Submitting booking with params:', {
-        room_type_id: parseInt(roomId),
-        branch_id: room.branch.id,
-        checkIn,
-        checkOut,
-        guests
-      })
-      
-      // Create booking using the correct API endpoint and parameters
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          room_type_id: parseInt(roomId),
-          branch_id: room.branch.id,
-          checkInDate: checkIn,
-          checkOutDate: checkOut,
-          numberOfGuests: parseInt(guests || '1'),
-          specialRequests: specialRequests.trim() || null
-        })
-      })
-      
-      const data = await response.json()
-      console.log('[BOOKING CREATE] Response status:', response.status)
-      console.log('[BOOKING CREATE] Response data:', data)
-      
-      if (!response.ok) {
-        console.error('[BOOKING CREATE] Error response:', {
-          status: response.status,
-          error: data.error,
-          details: data.details
-        })
-        throw new Error(data.error || data.details || 'Failed to create booking')
-      }
-      
-      // Redirect to confirmation page with booking reference
-      console.log('[BOOKING CREATE] Booking created successfully:', data.booking.booking_reference)
-      router.push(`/guest/booking/confirmation?ref=${data.booking.booking_reference}`)
-      
-    } catch (err: any) {
-      console.error('[BOOKING CREATE] Booking error:', err)
-      console.error('[BOOKING CREATE] Error details:', {
-        message: err.message,
-        error: err
-      })
-      setError(err.message || 'Failed to create booking. Please try again.')
-    } finally {
-      setSubmitting(false)
-    }
+    router.push(`/guest/booking/payment-options?${params.toString()}`)
   }
   
   if (loading) {
@@ -200,8 +202,7 @@ function BookingCreateContent() {
   }
   
   const nights = calculateNights()
-  const subtotal = room ? room.basePrice * nights : 0
-  const serviceFee = Math.round(subtotal * 0.1 * 100) / 100
+  const baseAmount = room ? room.basePrice * nights : 0
   const total = calculateTotal()
   
   return (
@@ -222,7 +223,59 @@ function BookingCreateContent() {
                 <CardTitle className="text-xl text-gray-900">Booking Details</CardTitle>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-6">
+                  {/* Availability Status */}
+                  {checkingAvailability && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
+                      <p className="text-blue-700">Checking room availability...</p>
+                    </div>
+                  )}
+
+                  {!checkingAvailability && availability && (
+                    <div className={`border rounded-lg p-4 flex items-start gap-3 ${
+                      availability.available 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-red-50 border-red-200'
+                    }`}>
+                      {availability.available ? (
+                        <>
+                          <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-green-900">Room Available!</p>
+                            <p className="text-sm text-green-700">{availability.message}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-red-900">Room Not Available</p>
+                            <p className="text-sm text-red-700 mb-2">{availability.reason}</p>
+                            {availability.conflicting_bookings && availability.conflicting_bookings.length > 0 && (
+                              <div className="text-xs text-red-600">
+                                <p className="font-semibold mb-1">Conflicting bookings:</p>
+                                {availability.conflicting_bookings.map((booking, idx) => (
+                                  <p key={idx}>
+                                    {new Date(booking.check_in).toLocaleDateString()} - {new Date(booking.check_out).toLocaleDateString()}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              onClick={() => router.push('/guest/search-rooms')}
+                            >
+                              Choose Different Dates
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* Room Info */}
                   <div className="border-b pb-6">
                     <h3 className="font-semibold text-gray-900 mb-4">Selected Room</h3>
@@ -325,26 +378,28 @@ function BookingCreateContent() {
                     </div>
                   )}
 
-                  {/* Submit Button */}
+                  {/* Proceed Button */}
                   <Button 
-                    type="submit" 
-                    disabled={submitting}
-                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-6 text-lg"
+                    onClick={handleProceedToPayment}
+                    disabled={!availability?.available || checkingAvailability}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-6 text-lg disabled:opacity-50"
                   >
-                    {submitting ? (
+                    {checkingAvailability ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Creating Booking...
+                        Checking Availability...
                       </>
+                    ) : availability?.available ? (
+                      <>Proceed to Payment Options</>
                     ) : (
-                      <>Confirm Booking</>
+                      <>Room Not Available</>
                     )}
                   </Button>
 
                   <p className="text-center text-sm text-gray-500">
-                    You'll receive a confirmation email after booking
+                    Choose your payment option on the next page
                   </p>
-                </form>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -359,20 +414,30 @@ function BookingCreateContent() {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Room Rate</span>
-                    <span className="font-semibold text-gray-900">${room?.basePrice}/night</span>
+                    <span className="font-semibold text-gray-900">${room?.basePrice.toFixed(2)}/night</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">{nights} night{nights > 1 ? 's' : ''}</span>
-                    <span className="font-semibold text-gray-900">${subtotal.toFixed(2)}</span>
+                    <span className="font-semibold text-gray-900">× {nights}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Service Fee (10%)</span>
-                    <span className="font-semibold text-gray-900">${serviceFee.toFixed(2)}</span>
+                  <div className="border-t pt-3">
+                    <div className="flex justify-between mb-2">
+                      <span className="font-semibold text-gray-700">Base Amount</span>
+                      <span className="font-semibold text-gray-900">${baseAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Services</span>
+                      <span>$0.00</span>
+                    </div>
                   </div>
                   <div className="border-t pt-3">
                     <div className="flex justify-between">
                       <span className="font-bold text-gray-900">Total Amount</span>
                       <span className="font-bold text-xl text-amber-600">${total.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600 mt-1">
+                      <span>Outstanding</span>
+                      <span className="font-semibold">${total.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

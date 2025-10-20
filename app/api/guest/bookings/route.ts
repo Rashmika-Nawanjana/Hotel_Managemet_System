@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
 
     const guestId = guest.userId as number;
 
-    // Fetch bookings with room and branch details
     const result = await pool.query(
       `SELECT 
         b.id,
@@ -51,15 +50,15 @@ export async function GET(request: NextRequest) {
         b.checked_in_at,
         b.checked_out_at,
         r.room_number,
-        rt.name as room_type,
+        rt.name AS room_type,
         rt.base_price,
         rt.images,
-        br.name as branch_name,
-        br.location as branch_location,
-        br.address as branch_address,
+        br.name AS branch_name,
+        br.location AS branch_location,
+        br.address AS branch_address,
         p.payment_status,
         p.payment_method,
-        p.amount as payment_amount
+        p.amount AS payment_amount
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
       JOIN room_types rt ON r.room_type_id = rt.id
@@ -70,12 +69,11 @@ export async function GET(request: NextRequest) {
       [guestId]
     );
 
-    // Categorize bookings
     const now = new Date();
-    const bookings = result.rows.map(booking => {
+    const bookings = result.rows.map((booking) => {
       const checkInDate = new Date(booking.check_in_date);
       const checkOutDate = new Date(booking.check_out_date);
-      
+
       let category = 'upcoming';
       if (booking.status === 'Cancelled' || booking.status === 'NoShow') {
         category = 'cancelled';
@@ -114,18 +112,17 @@ export async function POST(request: NextRequest) {
 
     const guestId = guest.userId as number;
     const body = await request.json();
-    const { 
-      room_id, 
-      check_in_date, 
-      check_out_date, 
-      number_of_guests, 
+    const {
+      room_id,
+      check_in_date,
+      check_out_date,
+      number_of_guests,
       special_requests,
-      payment_option, // 'full', 'reservation_fee', or 'pay_later'
-      payment_amount, // Amount to pay now (if any)
-      payment_method  // Payment method if paying now
+      payment_option,
+      payment_amount,
+      payment_method
     } = body;
 
-    // Validation
     if (!room_id || !check_in_date || !check_out_date) {
       return NextResponse.json(
         { error: 'Missing required fields: room_id, check_in_date, check_out_date' },
@@ -138,7 +135,6 @@ export async function POST(request: NextRequest) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Validate dates
     if (checkIn < today) {
       return NextResponse.json(
         { error: 'Check-in date cannot be in the past' },
@@ -153,205 +149,331 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if room exists and get room details with branch info
-    const roomResult = await pool.query(
-      `SELECT 
-        r.id, 
-        r.room_number, 
-        r.status, 
-        rt.base_price, 
-        rt.max_occupancy, 
-        rt.name as room_type,
-        br.name as branch_name,
-        br.address as branch_address
-       FROM rooms r
-       JOIN room_types rt ON r.room_type_id = rt.id
-       JOIN branches br ON r.branch_id = br.id
-       WHERE r.id = $1`,
-      [room_id]
-    );
+    const client = await pool.connect();
+    let bookingRow: any;
+    let paymentRow: any = null;
+    let roomRow: any;
+    let nights = 0;
+    let baseAmount = 0;
 
-    if (roomResult.rows.length === 0) {
-      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-    }
-
-    const room = roomResult.rows[0];
-
-    // Validate guest count
-    if (number_of_guests && number_of_guests > room.max_occupancy) {
-      return NextResponse.json(
-        { error: `Maximum occupancy for this room is ${room.max_occupancy} guests` },
-        { status: 400 }
+    try {
+      const roomResult = await client.query(
+    `SELECT 
+      r.id,
+      r.room_number,
+      r.status,
+      rt.base_price,
+      rt.capacity AS max_occupancy,
+      rt.name AS room_type,
+      br.name AS branch_name,
+      br.address AS branch_address
+         FROM rooms r
+         JOIN room_types rt ON r.room_type_id = rt.id
+         JOIN branches br ON r.branch_id = br.id
+         WHERE r.id = $1`,
+        [room_id]
       );
-    }
 
-    // Check room availability for the date range
-    const availabilityCheck = await pool.query(
-      `SELECT COUNT(*) as booking_count
-       FROM bookings
-       WHERE room_id = $1
-       AND status IN ('Pending', 'Confirmed', 'CheckedIn')
-       AND (
-         (check_in_date <= $2 AND check_out_date > $2) OR
-         (check_in_date < $3 AND check_out_date >= $3) OR
-         (check_in_date >= $2 AND check_out_date <= $3)
-       )`,
-      [room_id, check_in_date, check_out_date]
-    );
+      if (roomResult.rows.length === 0) {
+        return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+      }
 
-    if (parseInt(availabilityCheck.rows[0].booking_count) > 0) {
-      return NextResponse.json(
-        { error: 'Room is not available for the selected dates' },
-        { status: 409 }
-      );
-    }
+      roomRow = roomResult.rows[0];
 
-    // Calculate base amount (nights × base_price)
-    const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-    const base_amount = room.base_price * nights;
-
-    // Generate booking reference
-    const timestamp = Date.now();
-    const booking_reference = `BK-${timestamp.toString().slice(-8)}-${room_id}`;
-
-    // Determine booking status based on payment option
-    let bookingStatus = 'Pending'; // Default status
-    
-    // Create booking with new flexible payment columns
-    const bookingResult = await pool.query(
-      `INSERT INTO bookings 
-        (booking_reference, guest_id, room_id, check_in_date, check_out_date, 
-         number_of_guests, status, base_amount, services_amount, special_requests, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, $9, CURRENT_TIMESTAMP)
-       RETURNING *`,
-      [
-        booking_reference,
-        guestId,
-        room_id,
-        check_in_date,
-        check_out_date,
-        number_of_guests || 1,
-        bookingStatus,
-        base_amount,
-        special_requests || null
-      ]
-    );
-
-    const booking = bookingResult.rows[0];
-
-    // Handle payment if payment option is provided
-    let paymentResult = null;
-    if (payment_option && payment_option !== 'pay_later' && payment_amount && payment_method) {
-      try {
-        // Determine payment type
-        const payment_type = payment_option === 'reservation_fee' ? 'reservation_fee' : 
-                           payment_option === 'full' ? 'full' : 'partial';
-
-        // Create payment record
-        const paymentInsert = await pool.query(
-          `INSERT INTO payments 
-            (booking_id, amount, payment_method, payment_status, payment_type, paid_at, notes)
-           VALUES ($1, $2, $3::payment_method_enum, 'Completed', $4, CURRENT_TIMESTAMP, $5)
-           RETURNING *`,
-          [
-            booking.id,
-            payment_amount,
-            payment_method,
-            payment_type,
-            payment_option === 'reservation_fee' ? 'Reservation fee payment' : 'Booking payment'
-          ]
+      if (number_of_guests && number_of_guests > roomRow.max_occupancy) {
+        return NextResponse.json(
+          { error: `Maximum occupancy for this room is ${roomRow.max_occupancy} guests` },
+          { status: 400 }
         );
+      }
 
-        paymentResult = paymentInsert.rows[0];
+      const conflictCheck = await client.query(
+        `SELECT 1
+           FROM bookings
+          WHERE room_id = $1
+            AND status NOT IN ('Cancelled', 'CheckedOut', 'NoShow')
+            AND daterange(check_in_date, check_out_date, '[]') && daterange($2::date, $3::date, '[]')
+          LIMIT 1`,
+        [room_id, check_in_date, check_out_date]
+      );
 
-        // Update booking status if full payment made
-        if (payment_option === 'full' && payment_amount >= base_amount) {
-          await pool.query(
-            `UPDATE bookings SET status = 'Confirmed' WHERE id = $1`,
-            [booking.id]
+      if (conflictCheck.rows.length > 0) {
+        return NextResponse.json(
+          { error: 'Room is already booked for the selected dates' },
+          { status: 409 }
+        );
+      }
+
+      nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+      baseAmount = Number(roomRow.base_price) * nights;
+
+      const timestamp = Date.now();
+      const bookingReference = `BK-${timestamp.toString().slice(-8)}-${room_id}`;
+
+      let initialPaidAmount = 0;
+      if (payment_option && payment_option !== 'pay_later' && payment_amount) {
+        initialPaidAmount = Number(payment_amount);
+      }
+
+      initialPaidAmount = Math.min(
+        Math.max(Number.isFinite(initialPaidAmount) ? initialPaidAmount : 0, 0),
+        baseAmount
+      );
+
+      let bookingStatus: string = 'Pending';
+      if (payment_option === 'full' && initialPaidAmount >= baseAmount) {
+        bookingStatus = 'Confirmed';
+      }
+
+      // Calculate totals explicitly to satisfy NOT NULL constraints even if triggers are missing
+      const servicesAmount = 0.0;
+      const totalAmount = Number((baseAmount + servicesAmount).toFixed(2));
+      const outstandingAmount = Number((totalAmount - initialPaidAmount).toFixed(2));
+
+      await client.query('BEGIN');
+
+      const bookingInsert = await client.query(
+        `INSERT INTO bookings (
+            booking_reference,
+            guest_id,
+            room_id,
+            check_in_date,
+            check_out_date,
+            number_of_guests,
+            status,
+            total_amount,
+            special_requests,
+            base_amount,
+            services_amount,
+            paid_amount,
+            outstanding_amount
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id,
+                   booking_reference,
+                   guest_id,
+                   room_id,
+                   check_in_date,
+                   check_out_date,
+                   number_of_guests,
+                   status,
+                   base_amount,
+                   services_amount,
+                   total_amount,
+                   paid_amount,
+                   outstanding_amount,
+                   special_requests`,
+        [
+          bookingReference,
+          guestId,
+          room_id,
+          check_in_date,
+          check_out_date,
+          number_of_guests || 1,
+          bookingStatus,
+          totalAmount,
+          special_requests || null,
+          baseAmount,
+          servicesAmount,
+          initialPaidAmount,
+          outstandingAmount
+        ]
+      );
+
+      bookingRow = bookingInsert.rows[0];
+
+      // Wrap payment recording in a non-fatal try/catch so booking creation still succeeds if payment logging fails
+      try {
+        if (payment_option && payment_option !== 'pay_later' && initialPaidAmount > 0 && payment_method) {
+          const paymentType = payment_option === 'reservation_fee' ? 'reservation_fee' :
+                              payment_option === 'full' ? 'full' : 'partial';
+
+          const paymentInsert = await client.query(
+            `INSERT INTO payments (
+                booking_id,
+                amount,
+                payment_method,
+                payment_status,
+                payment_type,
+                paid_at,
+                notes
+             ) VALUES ($1, $2, $3::payment_method_enum, 'Completed', $4, CURRENT_TIMESTAMP, $5)
+             RETURNING *`,
+            [
+              bookingRow.id,
+              initialPaidAmount,
+              payment_method,
+              paymentType,
+              payment_option === 'reservation_fee' ? 'Reservation fee payment' : 'Booking payment'
+            ]
           );
-          bookingStatus = 'Confirmed';
+
+          paymentRow = paymentInsert.rows[0];
+
+          if (payment_option === 'full' && initialPaidAmount >= baseAmount && bookingRow.status !== 'Confirmed') {
+            await client.query(`UPDATE bookings SET status = 'Confirmed' WHERE id = $1`, [bookingRow.id]);
+            bookingRow.status = 'Confirmed';
+          }
         }
       } catch (paymentError) {
-        console.error('[CREATE BOOKING] Payment processing error:', paymentError);
-        // Continue even if payment fails - booking is created
+        console.error('[BOOKING CREATE] Payment error (non-fatal):', paymentError);
+        // Continue - booking is created even if payment record fails
       }
+
+      const refreshedBooking = await client.query(
+        `SELECT 
+            b.id,
+            b.booking_reference,
+            b.guest_id,
+            b.room_id,
+            b.check_in_date,
+            b.check_out_date,
+            b.number_of_guests,
+            b.status,
+            b.base_amount,
+            b.services_amount,
+            b.total_amount,
+            b.paid_amount,
+            b.outstanding_amount,
+            b.special_requests
+         FROM bookings b
+         WHERE b.id = $1`,
+        [bookingRow.id]
+      );
+
+      bookingRow = refreshedBooking.rows[0];
+
+      await client.query('COMMIT');
+    } catch (dbError: any) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        console.error('[BOOKING CREATE] ROLLBACK failed:', rollbackError);
+      });
+
+      console.error('[BOOKING CREATE] INSERT failed:', {
+        message: dbError?.message,
+        code: dbError?.code,
+        detail: dbError?.detail,
+        hint: dbError?.hint,
+        constraint: dbError?.constraint,
+        table: dbError?.table,
+        column: dbError?.column
+      });
+
+      const message = (dbError?.message || '').toLowerCase();
+      if (message.includes('room is already booked')) {
+        return NextResponse.json(
+          { error: 'Room is already booked for the selected dates' },
+          { status: 409 }
+        );
+      }
+
+      if (message.includes('check-out date must be after check-in date')) {
+        return NextResponse.json(
+          { error: 'Check-out date must be after check-in date' },
+          { status: 400 }
+        );
+      }
+
+      if (dbError?.code === '23505') {
+        return NextResponse.json(
+          { error: 'Duplicate booking detected. Please try again.' },
+          { status: 409 }
+        );
+      }
+
+      throw dbError;
+    } finally {
+      client.release();
     }
 
-    // Get guest details for email
+    if (!bookingRow) {
+      throw new Error('Booking insert failed to return a record');
+    }
+
     const guestResult = await pool.query(
       `SELECT first_name, last_name, email FROM guests WHERE id = $1`,
       [guestId]
     );
     const guestData = guestResult.rows[0];
 
-    // Get updated booking with calculated amounts
-    const updatedBookingResult = await pool.query(
-      `SELECT * FROM bookings WHERE id = $1`,
-      [booking.id]
-    );
-    const updatedBooking = updatedBookingResult.rows[0];
+    console.log('[BOOKING CREATE] Final state:', {
+      id: bookingRow.id,
+      reference: bookingRow.booking_reference,
+      status: bookingRow.status,
+      total: Number(bookingRow.total_amount || 0),
+      paid: Number(bookingRow.paid_amount || 0),
+      outstanding: Number(bookingRow.outstanding_amount || 0)
+    });
 
-    // Send confirmation email (async, don't wait for it)
-    if (guestData.email) {
+    if (guestData?.email) {
       sendBookingConfirmation(
         guestData.email,
         {
           guestName: `${guestData.first_name} ${guestData.last_name}`,
-          bookingReference: booking.booking_reference,
-          roomType: room.room_type,
-          roomNumber: room.room_number,
+          bookingReference: bookingRow.booking_reference,
+          roomType: roomRow.room_type,
+          roomNumber: roomRow.room_number,
           checkIn: check_in_date,
           checkOut: check_out_date,
-          nights: nights,
+          nights,
           guests: number_of_guests || 1,
-          totalAmount: `USD ${updatedBooking.total_amount.toLocaleString()}`,
+          totalAmount: `$${Number(bookingRow.total_amount ?? baseAmount).toFixed(2)}`,
           specialRequests: special_requests || undefined,
-          branchName: room.branch_name,
-          branchAddress: room.branch_address
+          branchName: roomRow.branch_name,
+          branchAddress: roomRow.branch_address
         }
-      ).catch(err => {
-        console.error('Failed to send confirmation email:', err);
-        // Don't fail the booking if email fails
-      });
+      ).catch((err) => console.error('Email error:', err));
     }
 
     return NextResponse.json({
       success: true,
-      message: payment_option === 'pay_later' 
-        ? 'Booking created successfully. Payment can be made later.'
-        : payment_option === 'reservation_fee'
-        ? 'Booking created with reservation fee paid. Remaining balance can be paid later.'
-        : 'Booking confirmed with full payment.',
+      message:
+        payment_option === 'pay_later'
+          ? 'Booking created successfully. Payment can be made later.'
+          : payment_option === 'reservation_fee'
+          ? 'Booking created with reservation fee paid. Remaining balance can be paid later.'
+          : 'Booking confirmed with full payment.',
       booking: {
-        id: updatedBooking.id,
-        booking_reference: updatedBooking.booking_reference,
-        room_number: room.room_number,
-        room_type: room.room_type,
-        check_in_date: updatedBooking.check_in_date,
-        check_out_date: updatedBooking.check_out_date,
-        number_of_guests: updatedBooking.number_of_guests,
-        nights: nights,
-        base_amount: parseFloat(updatedBooking.base_amount),
-        services_amount: parseFloat(updatedBooking.services_amount),
-        total_amount: parseFloat(updatedBooking.total_amount),
-        paid_amount: parseFloat(updatedBooking.paid_amount),
-        outstanding_amount: parseFloat(updatedBooking.outstanding_amount),
-        status: bookingStatus,
-        payment: paymentResult ? {
-          id: paymentResult.id,
-          payment_reference: paymentResult.payment_reference,
-          amount: parseFloat(paymentResult.amount),
-          payment_type: paymentResult.payment_type,
-          payment_method: paymentResult.payment_method
-        } : null
+        id: bookingRow.id,
+        booking_reference: bookingRow.booking_reference,
+        room_number: roomRow.room_number,
+        room_type: roomRow.room_type,
+        check_in_date: bookingRow.check_in_date,
+        check_out_date: bookingRow.check_out_date,
+        number_of_guests: bookingRow.number_of_guests,
+        nights,
+        base_amount: Number(bookingRow.base_amount || 0),
+        services_amount: Number(bookingRow.services_amount || 0),
+        total_amount: Number(bookingRow.total_amount || 0),
+        paid_amount: Number(bookingRow.paid_amount || 0),
+        outstanding_amount: Number(bookingRow.outstanding_amount || 0),
+        status: bookingRow.status,
+        payment: paymentRow
+          ? {
+              id: paymentRow.id,
+              payment_reference: paymentRow.payment_reference,
+              amount: Number(paymentRow.amount),
+              payment_type: paymentRow.payment_type,
+              payment_method: paymentRow.payment_method
+            }
+          : null
       }
     }, { status: 201 });
 
   } catch (error) {
     console.error('[CREATE BOOKING] Error:', error);
+    console.error('[CREATE BOOKING] Error details:', {
+      message: (error as any).message,
+      code: (error as any).code,
+      detail: (error as any).detail,
+      hint: (error as any).hint,
+      stack: (error as any).stack
+    });
     return NextResponse.json(
-      { error: 'Failed to create booking', details: (error as Error).message },
+      {
+        error: 'Failed to create booking',
+        details: (error as Error).message,
+        code: (error as any).code
+      },
       { status: 500 }
     );
   }

@@ -17,12 +17,18 @@ interface Booking {
   check_out_date: string
   number_of_guests: number
   status: string
+  base_amount: number
+  services_amount: number
   total_amount: number
   paid_amount: number
   outstanding_amount: number
   branch_name: string
   checked_in_at: string | null
   checked_out_at: string | null
+  image?: string
+  category?: string
+  can_modify?: boolean
+  can_cancel?: boolean
 }
 
 export default function MyBookingsPage() {
@@ -56,61 +62,7 @@ export default function MyBookingsPage() {
     }
   }
 
-  const handleCheckIn = async (booking: Booking) => {
-    if (booking.outstanding_amount > 0) {
-      setMessage({ type: 'error', text: 'Please complete payment before checking in' })
-      setSelectedBooking(booking)
-      setPaymentAmount(booking.outstanding_amount.toString())
-      setShowPaymentDialog(true)
-      return
-    }
-
-    try {
-      setProcessing(true)
-      const response = await fetch(`/api/bookings/${booking.id}/checkin`, {
-        method: 'POST'
-      })
-      const data = await response.json()
-      if (data.success) {
-        setMessage({ type: 'success', text: 'Checked in successfully!' })
-        fetchBookings()
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to check in' })
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to check in' })
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  const handleCheckOut = async (booking: Booking) => {
-    if (booking.outstanding_amount > 0) {
-      setMessage({ type: 'error', text: 'Please clear outstanding balance before checking out' })
-      setSelectedBooking(booking)
-      setPaymentAmount(booking.outstanding_amount.toString())
-      setShowPaymentDialog(true)
-      return
-    }
-
-    try {
-      setProcessing(true)
-      const response = await fetch(`/api/bookings/${booking.id}/checkout`, {
-        method: 'POST'
-      })
-      const data = await response.json()
-      if (data.success) {
-        setMessage({ type: 'success', text: 'Checked out successfully!' })
-        fetchBookings()
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to check out' })
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to check out' })
-    } finally {
-      setProcessing(false)
-    }
-  }
+  // Check-in and check-out functions removed - only staff can check in/out guests
 
   const handlePayment = async () => {
     if (!selectedBooking || !paymentAmount || parseFloat(paymentAmount) <= 0) {
@@ -333,6 +285,38 @@ export default function MyBookingsPage() {
                     </div>
                   </div>
 
+                  {/* Payment Summary - NEW */}
+                  <div className="mb-6 p-5 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl border border-gray-200 shadow-sm">
+                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-600" />
+                      Payment Summary
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Room Cost:</span>
+                        <span className="font-semibold text-gray-900">${Number(booking.base_amount || booking.total_amount).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Additional Services:</span>
+                        <span className="font-semibold text-gray-900">${Number(booking.services_amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t border-gray-300">
+                        <span className="font-semibold text-gray-700">Total Amount:</span>
+                        <span className="font-bold text-gray-900">${Number(booking.total_amount).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-green-600 font-medium">Amount Paid:</span>
+                        <span className="font-semibold text-green-600">-${Number(booking.paid_amount).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t border-gray-300">
+                        <span className="font-bold text-gray-900 text-base">Outstanding Balance:</span>
+                        <span className={`font-bold text-base ${booking.outstanding_amount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ${Number(booking.outstanding_amount).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   {booking.checked_in_at && (
                     <div className="mb-6 p-4 bg-green-50/80 backdrop-blur-sm rounded-xl border border-green-200 shadow-sm">
                       <div className="flex items-center gap-3">
@@ -374,26 +358,7 @@ export default function MyBookingsPage() {
                         Pay Now
                       </Button>
                     )}
-                    {canCheckIn(booking) && (
-                      <Button
-                        onClick={() => handleCheckIn(booking)}
-                        disabled={processing}
-                        className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-6 text-base rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                      >
-                        <LogIn className="w-5 h-5 mr-2" />
-                        Check In
-                      </Button>
-                    )}
-                    {canCheckOut(booking) && (
-                      <Button
-                        onClick={() => handleCheckOut(booking)}
-                        disabled={processing}
-                        className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-6 text-base rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                      >
-                        <LogOut className="w-5 h-5 mr-2" />
-                        Check Out
-                      </Button>
-                    )}
+                    {/* Check-in/Check-out removed - only staff can perform these actions */}
                     <Button
                       onClick={() => router.push(`/guest/my-bookings/${booking.id}`)}
                       variant="outline"
@@ -403,6 +368,28 @@ export default function MyBookingsPage() {
                       View Details
                     </Button>
                   </div>
+                  
+                  {/* Additional Action Buttons Row - NEW */}
+                  {['Pending', 'Confirmed', 'CheckedIn'].includes(booking.status) && (
+                    <div className="flex gap-3 flex-wrap mt-3 pt-3 border-t border-gray-200">
+                      <Button
+                        onClick={() => router.push(`/guest/my-bookings/${booking.id}?tab=services`)}
+                        variant="outline"
+                        className="border-2 border-purple-300 hover:border-purple-500 hover:bg-purple-50 text-purple-700 font-semibold px-5 py-3 text-sm rounded-xl shadow-md hover:shadow-lg transition-all"
+                      >
+                        <AlertCircle className="w-4 h-4 mr-2" />
+                        Add Services
+                      </Button>
+                      <Button
+                        onClick={() => router.push(`/guest/my-bookings/${booking.id}?tab=payments`)}
+                        variant="outline"
+                        className="border-2 border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-700 font-semibold px-5 py-3 text-sm rounded-xl shadow-md hover:shadow-lg transition-all"
+                      >
+                        <Clock className="w-4 h-4 mr-2" />
+                        Payment History
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     const alerts: Alert[] = [];
 
     // Maintenance Alerts - Fetch maintenance requests for this guest
+    // Check if approval_status column exists by trying a safer query
     let maintenanceQuery = `
       SELECT 
         ml.id,
@@ -63,7 +64,6 @@ export async function GET(request: NextRequest) {
         ml.issue_description,
         ml.priority,
         ml.status,
-        ml.approval_status,
         ml.created_at,
         COALESCE(assigned_staff.first_name || ' ' || assigned_staff.last_name, 'Unassigned') as assigned_to_name,
         r.room_number,
@@ -74,8 +74,7 @@ export async function GET(request: NextRequest) {
       JOIN room_types rt ON r.room_type_id = rt.id
       JOIN branches br ON r.branch_id = br.id
       LEFT JOIN staff assigned_staff ON ml.assigned_to_staff_id = assigned_staff.id
-      WHERE ml.reported_by_guest_id = $1
-        AND ml.approval_status = 'Approved'`;
+      WHERE ml.reported_by_guest_id = $1`;
     
     // Add status filter if provided
     if (statusFilter && statusFilter !== 'all') {
@@ -99,12 +98,12 @@ export async function GET(request: NextRequest) {
         priority: row.priority,
         title: `Maintenance Request ${row.log_reference}`,
         message: row.issue_description,
-        status: row.approval_status === 'Pending' ? 'Pending Approval' : row.status,
+        status: row.status,
         created_at: row.created_at,
         reference: row.log_reference,
         room_info: `${row.room_type} - Room ${row.room_number}, ${row.branch_name}`,
         assigned_to: row.assigned_to_name,
-        is_read: row.status === 'Completed' || row.status === 'Cancelled' || row.approval_status === 'Rejected'
+        is_read: row.status === 'Completed' || row.status === 'Cancelled'
       });
     });
 

@@ -16,8 +16,10 @@ import {
   Wifi, Tv, Snowflake, ParkingCircle, Waves, Dumbbell,
   Sparkles, UtensilsCrossed, Wine, Bell, Shirt, Lock,
   Coffee, Home, Mountain, Bath, ShowerHead, Wind,
-  Phone, PenTool, Sofa, ShoppingBag, Sun, Shield
+  Phone, PenTool, Sofa, ShoppingBag, Sun, Shield,
+  CheckCircle2, XCircle, AlertCircle
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 // Map icon names from database to Lucide React components
 const getAmenityIcon = (iconName: string) => {
@@ -50,6 +52,15 @@ const getAmenityIcon = (iconName: string) => {
   return iconMap[iconName?.toLowerCase()] || Home
 }
 
+// Helper function to get local date in YYYY-MM-DD format without timezone issues
+const getTodayDateString = () => {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 interface Room {
   id: number;
   name: string;
@@ -78,6 +89,10 @@ interface Room {
     icon_name: string;
   }>;
   availableCount?: number;
+  availability?: {
+    available: boolean;
+    status: 'available' | 'booked' | 'maintenance';
+  };
 }
 
 export default function SearchRoomsPage() {
@@ -93,12 +108,20 @@ export default function SearchRoomsPage() {
   const [checkInDate, setCheckInDate] = useState('')
   const [checkOutDate, setCheckOutDate] = useState('')
   const [guests, setGuests] = useState(2)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
 
   useEffect(() => {
     fetchRooms()
     fetchAmenities()
     fetchBranches()
   }, [])
+
+  // Check availability when dates change
+  useEffect(() => {
+    if (checkInDate && checkOutDate && rooms.length > 0) {
+      checkRoomsAvailability()
+    }
+  }, [checkInDate, checkOutDate, rooms.length])
 
   // Refetch rooms when filters change
   useEffect(() => {
@@ -174,6 +197,53 @@ export default function SearchRoomsPage() {
     }
   }
 
+  const checkRoomsAvailability = async () => {
+    if (!checkInDate || !checkOutDate) return
+    
+    setCheckingAvailability(true)
+    
+    try {
+      // Check availability for all rooms
+      const updatedRooms = await Promise.all(
+        rooms.map(async (room) => {
+          try {
+            const response = await fetch('/api/guest/rooms/check-availability', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                room_id: room.id,
+                check_in_date: checkInDate,
+                check_out_date: checkOutDate
+              })
+            })
+            
+            const data = await response.json()
+            
+            const status: 'available' | 'booked' | 'maintenance' = data.available ? 'available' : 
+                       data.reason?.includes('maintenance') ? 'maintenance' : 'booked'
+            
+            return {
+              ...room,
+              availability: {
+                available: data.available,
+                status: status
+              }
+            }
+          } catch (error) {
+            console.error(`Error checking availability for room ${room.id}:`, error)
+            return room
+          }
+        })
+      )
+      
+      setRooms(updatedRooms)
+    } catch (error) {
+      console.error('Error checking availability:', error)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
+
   const handleApplyFilters = () => {
     fetchRooms()
   }
@@ -233,7 +303,7 @@ export default function SearchRoomsPage() {
                           type="date" 
                           value={checkInDate}
                           onChange={(e) => setCheckInDate(e.target.value)}
-                          min={new Date().toISOString().split('T')[0]}
+                          min={getTodayDateString()}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                         />
                     </div>
@@ -243,7 +313,7 @@ export default function SearchRoomsPage() {
                           type="date" 
                           value={checkOutDate}
                           onChange={(e) => setCheckOutDate(e.target.value)}
-                          min={checkInDate || new Date().toISOString().split('T')[0]}
+                          min={checkInDate || getTodayDateString()}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                         />
                     </div>
@@ -368,8 +438,28 @@ export default function SearchRoomsPage() {
                         <div className="w-2/3">
                           <CardHeader>
                               <div className="flex justify-between items-start">
-                                  <div>
-                                      <CardTitle className="text-xl font-bold text-gray-900">{room.name}</CardTitle>
+                                  <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <CardTitle className="text-xl font-bold text-gray-900">{room.name}</CardTitle>
+                                        {checkInDate && checkOutDate && room.availability && (
+                                          <Badge 
+                                            variant={room.availability.available ? "default" : "destructive"}
+                                            className={`${
+                                              room.availability.status === 'available' 
+                                                ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                                                : room.availability.status === 'maintenance'
+                                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                                                : 'bg-red-100 text-red-800 hover:bg-red-200'
+                                            } flex items-center gap-1`}
+                                          >
+                                            {room.availability.status === 'available' && <CheckCircle2 size={12} />}
+                                            {room.availability.status === 'booked' && <XCircle size={12} />}
+                                            {room.availability.status === 'maintenance' && <AlertCircle size={12} />}
+                                            {room.availability.status === 'available' ? 'Available' : 
+                                             room.availability.status === 'maintenance' ? 'Maintenance' : 'Booked'}
+                                          </Badge>
+                                        )}
+                                      </div>
                                       <CardDescription>{room.branch.name} - {room.branch.location}</CardDescription>
                                   </div>
                                   {room.isFeatured && (
@@ -425,12 +515,33 @@ export default function SearchRoomsPage() {
                                           View Details
                                       </Button>
                                   </Link>
-                                  {checkInDate && checkOutDate && (
+                                  {checkInDate && checkOutDate ? (
                                     <Link href={`/guest/booking/create?roomId=${room.id}&checkIn=${checkInDate}&checkOut=${checkOutDate}&guests=${guests}`} passHref>
-                                        <Button className="font-bold group-hover:bg-amber-600">
-                                            Book Now <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform"/>
+                                        <Button 
+                                          className={`font-bold ${
+                                            room.availability?.available 
+                                              ? 'group-hover:bg-amber-600' 
+                                              : 'opacity-75'
+                                          }`}
+                                          disabled={checkingAvailability}
+                                        >
+                                            {checkingAvailability ? (
+                                              <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Checking...
+                                              </>
+                                            ) : (
+                                              <>
+                                                {room.availability?.available ? 'Book Now' : 'Check Availability'} 
+                                                <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform"/>
+                                              </>
+                                            )}
                                         </Button>
                                     </Link>
+                                  ) : (
+                                    <Button variant="outline" disabled className="font-bold">
+                                      Select Dates to Book
+                                    </Button>
                                   )}
                                 </div>
                               </div>

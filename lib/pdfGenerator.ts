@@ -41,25 +41,29 @@ export class SkyNestPDFGenerator {
   }
 
   /**
-   * Add company logo to PDF
+   * Add company logo to PDF (using SND.png for everything)
    */
-  private addLogo(type: 'report' | 'bill' | 'invoice') {
+  private addLogo() {
     try {
-      // Use SND.png for invoices/bills, Skyad.png for reports
-      const logoText = type === 'report' ? 'SKY NEST' : 'SND';
+      // Use SND.png logo image for all document types
+      const logoPath = '/SND.png';
       
-      // Add logo placeholder (styled box with text)
-      this.doc.setFillColor(...this.colors.primary);
-      this.doc.roundedRect(this.margin, this.currentY, 35, 35, 3, 3, 'F');
+      // Calculate centered position for logo
+      const logoWidth = 60;
+      const logoHeight = 25;
+      const xPos = (this.pageWidth - logoWidth) / 2;
       
-      this.doc.setFont('helvetica', 'bold');
-      this.doc.setFontSize(12);
-      this.doc.setTextColor(...this.colors.white);
-      this.doc.text(logoText, this.margin + 17.5, this.currentY + 20, { align: 'center' });
+      // Add logo image
+      this.doc.addImage(logoPath, 'PNG', xPos, this.currentY, logoWidth, logoHeight);
       
-      this.currentY += 40;
+      this.currentY += logoHeight + 5;
     } catch (error) {
       console.error('Error adding logo:', error);
+      // Fallback to text if logo fails to load
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(20);
+      this.doc.setTextColor(...this.colors.primary);
+      this.doc.text('SKY NEST HOTELS', this.pageWidth / 2, this.currentY, { align: 'center' });
       this.currentY += 10;
     }
   }
@@ -267,7 +271,7 @@ export class SkyNestPDFGenerator {
     this.currentY = this.margin;
     
     // Add logo
-    this.addLogo('report');
+    this.addLogo();
     
     // Add header
     this.addHeader('report', options.title, 'Administrative Revenue & Analytics Report');
@@ -314,7 +318,7 @@ export class SkyNestPDFGenerator {
     this.currentY = this.margin;
     
     // Add logo
-    this.addLogo('invoice');
+    this.addLogo();
     
     // Add header with INVOICE title
     this.addHeader('invoice', 'INVOICE', 'Sky Nest Hotels - Premium Accommodation');
@@ -395,7 +399,7 @@ export class SkyNestPDFGenerator {
       
     const tableRows = options.items.map(item => {
       if (item.quantity !== undefined && item.rate !== undefined) {
-        return [item.description, item.quantity.toString(), `LKR ${item.rate}`, item.amount];
+        return [item.description, item.quantity.toString(), `$${item.rate}`, item.amount];
       }
       return [item.description, item.amount];
     });
@@ -427,16 +431,17 @@ export class SkyNestPDFGenerator {
     this.doc.line(totalsX, this.currentY, this.pageWidth - this.margin, this.currentY);
     this.currentY += 8;
     
-    // Total amount
+    // Total amount - with proper spacing between label and value
     this.doc.setFont('helvetica', 'bold');
     this.doc.setFontSize(12);
     this.doc.setTextColor(...this.colors.secondary);
     this.doc.text('TOTAL:', totalsX, this.currentY);
     this.doc.setFontSize(14);
     this.doc.setTextColor(...this.colors.primary);
+    // Increased gap by using totalsX + 45 instead of just aligning right from the label
     this.doc.text(options.total, this.pageWidth - this.margin, this.currentY, { align: 'right' });
     
-    this.currentY += 8;
+    this.currentY += 10;
     
     if (options.paidAmount) {
       this.doc.setFont('helvetica', 'normal');
@@ -444,7 +449,7 @@ export class SkyNestPDFGenerator {
       this.doc.setTextColor(...this.colors.text);
       this.doc.text('Paid:', totalsX, this.currentY);
       this.doc.text(options.paidAmount, this.pageWidth - this.margin, this.currentY, { align: 'right' });
-      this.currentY += 6;
+      this.currentY += 7;
     }
     
     if (options.balance) {
@@ -454,7 +459,7 @@ export class SkyNestPDFGenerator {
       this.doc.setTextColor(balanceAmount > 0 ? 220 : 34, balanceAmount > 0 ? 38 : 197, balanceAmount > 0 ? 38 : 94);
       this.doc.text('Balance:', totalsX, this.currentY);
       this.doc.text(options.balance, this.pageWidth - this.margin, this.currentY, { align: 'right' });
-      this.currentY += 10;
+      this.currentY += 12;
     }
     
     // Add payment terms
@@ -472,7 +477,7 @@ export class SkyNestPDFGenerator {
     this.currentY += 5;
     this.doc.text('• Check-out time is 12:00 PM. Late check-out charges may apply', this.margin, this.currentY);
     this.currentY += 5;
-    this.doc.text('• All prices are in Sri Lankan Rupees (LKR)', this.margin, this.currentY);
+    this.doc.text('• All prices are in US Dollars (USD)', this.margin, this.currentY);
     
     this.currentY += 15;
     

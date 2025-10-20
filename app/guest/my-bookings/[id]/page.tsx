@@ -1,14 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import GuestNavbar from '@/app/components/GuestNavbar'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
   Calendar, MapPin, Users, CreditCard, CheckCircle, Clock, XCircle, 
-  AlertCircle, LogIn, LogOut, ArrowLeft, Loader2, Home, Phone, Mail
+  AlertCircle, LogIn, LogOut, ArrowLeft, Loader2, Home, Phone, Mail,
+  Plus, Trash2, Hotel, DollarSign
 } from 'lucide-react'
 
 interface Booking {
@@ -20,6 +27,8 @@ interface Booking {
   check_out_date: string
   number_of_guests: number
   status: string
+  base_amount: number
+  services_amount: number
   total_amount: number
   paid_amount: number
   outstanding_amount: number
@@ -31,18 +40,63 @@ interface Booking {
   created_at: string
 }
 
+interface Service {
+  service_usage_id: number
+  service_id: number
+  service_name: string
+  quantity: number
+  price_at_time: number
+  total_price: number
+  notes?: string
+  added_at: string
+}
+
+interface Payment {
+  payment_id: number
+  amount: number
+  payment_method: string
+  payment_type: string
+  payment_date: string
+  payment_status: string
+  transaction_id?: string
+}
+
+interface AvailableService {
+  service_id: number
+  name: string
+  description: string
+  price: number
+  category: string
+  available: boolean
+}
+
 export default function BookingDetailsPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const bookingId = params.id
+  const defaultTab = searchParams.get('tab') || 'overview'
 
   const [booking, setBooking] = useState<Booking | null>(null)
+  const [services, setServices] = useState<Service[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [availableServices, setAvailableServices] = useState<AvailableService[]>([])
   const [loading, setLoading] = useState(true)
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState('CreditCard')
-  const [paymentAmount, setPaymentAmount] = useState('')
   const [processing, setProcessing] = useState(false)
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
+  
+  // Dialog states
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+  const [showAddServiceDialog, setShowAddServiceDialog] = useState(false)
+  const [showDeleteServiceDialog, setShowDeleteServiceDialog] = useState(false)
+  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null)
+
+  // Form states
+  const [selectedServiceId, setSelectedServiceId] = useState('')
+  const [serviceQuantity, setServiceQuantity] = useState('1')
+  const [serviceNotes, setServiceNotes] = useState('')
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('Credit Card')
 
   useEffect(() => {
     fetchBooking()
@@ -51,19 +105,120 @@ export default function BookingDetailsPage() {
   const fetchBooking = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/bookings/${bookingId}`)
+      const response = await fetch(`/api/guest/bookings/${bookingId}`)
+      if (!response.ok) throw new Error('Failed to fetch booking')
       const data = await response.json()
-      
-      if (data.success) {
-        setBooking(data.booking)
-      } else {
-        setMessage({ type: 'error', text: 'Booking not found' })
-      }
+      setBooking(data.booking)
     } catch (error) {
       console.error('Error fetching booking:', error)
       setMessage({ type: 'error', text: 'Failed to load booking details' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchServices = async () => {
+    try {
+      const response = await fetch(`/api/guest/bookings/${bookingId}/services`)
+      if (!response.ok) throw new Error('Failed to fetch services')
+      const data = await response.json()
+      setServices(data.services || [])
+    } catch (error) {
+      console.error('Error fetching services:', error)
+    }
+  }
+
+  const fetchPayments = async () => {
+    try {
+      const response = await fetch(`/api/guest/bookings/${bookingId}/payments`)
+      if (!response.ok) throw new Error('Failed to fetch payments')
+      const data = await response.json()
+      setPayments(data.payments || [])
+    } catch (error) {
+      console.error('Error fetching payments:', error)
+    }
+  }
+
+  const fetchAvailableServices = async () => {
+    try {
+      const response = await fetch('/api/guest/services')
+      if (!response.ok) throw new Error('Failed to fetch available services')
+      const data = await response.json()
+      setAvailableServices(data.services || [])
+    } catch (error) {
+      console.error('Error fetching available services:', error)
+    }
+  }
+
+  const handleAddService = async () => {
+    if (!selectedServiceId || !serviceQuantity) {
+      setMessage({ type: 'error', text: 'Please select a service and quantity' })
+      return
+    }
+
+    try {
+      setProcessing(true)
+      const selectedService = availableServices.find(s => s.service_id.toString() === selectedServiceId)
+      
+      const response = await fetch(`/api/guest/bookings/${bookingId}/services`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: parseInt(selectedServiceId),
+          quantity: parseInt(serviceQuantity),
+          price_at_time: selectedService?.price || 0,
+          notes: serviceNotes || null
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to add service')
+      }
+
+      setMessage({ type: 'success', text: 'Service added successfully!' })
+      setShowAddServiceDialog(false)
+      setSelectedServiceId('')
+      setServiceQuantity('1')
+      setServiceNotes('')
+      
+      // Refresh data
+      await fetchBooking()
+      await fetchServices()
+    } catch (error: any) {
+      console.error('Error adding service:', error)
+      setMessage({ type: 'error', text: error.message || 'Failed to add service' })
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleDeleteService = async () => {
+    if (!serviceToDelete) return
+
+    try {
+      setProcessing(true)
+      const response = await fetch(`/api/guest/bookings/${bookingId}/services?service_usage_id=${serviceToDelete.service_usage_id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to remove service')
+      }
+
+      setMessage({ type: 'success', text: 'Service removed successfully!' })
+      setShowDeleteServiceDialog(false)
+      setServiceToDelete(null)
+      
+      // Refresh data
+      await fetchBooking()
+      await fetchServices()
+    } catch (error: any) {
+      console.error('Error removing service:', error)
+      setMessage({ type: 'error', text: error.message || 'Failed to remove service' })
+    } finally {
+      setProcessing(false)
     }
   }
 
@@ -73,101 +228,65 @@ export default function BookingDetailsPage() {
       return
     }
 
+    const amount = parseFloat(paymentAmount)
+    if (amount > booking.outstanding_amount) {
+      setMessage({ type: 'error', text: 'Payment amount cannot exceed outstanding balance' })
+      return
+    }
+
     try {
       setProcessing(true)
-      console.log('[PAYMENT] Sending payment request:', {
-        booking_id: booking.id,
-        amount: parseFloat(paymentAmount),
-        payment_method: paymentMethod
-      })
-
-      const response = await fetch('/api/payments', {
+      const response = await fetch(`/api/guest/bookings/${bookingId}/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          booking_id: booking.id,
-          amount: parseFloat(paymentAmount),
-          payment_method: paymentMethod
+          amount,
+          payment_method: paymentMethod,
+          payment_type: amount === booking.outstanding_amount ? 'full' : 'partial'
         })
       })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Payment failed')
+      }
+
+      setMessage({ type: 'success', text: 'Payment processed successfully!' })
+      setShowPaymentDialog(false)
+      setPaymentAmount('')
       
-      const data = await response.json()
-      console.log('[PAYMENT] Response:', data)
-
-      if (data.success) {
-        setMessage({ type: 'success', text: 'Payment processed successfully!' })
-        setShowPaymentDialog(false)
-        setPaymentAmount('')
-        setTimeout(() => fetchBooking(), 500)
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Payment failed' })
-      }
-    } catch (err) {
-      console.error('[PAYMENT] Error:', err)
-      setMessage({ type: 'error', text: 'Payment processing failed' })
+      // Refresh data
+      await fetchBooking()
+      await fetchPayments()
+    } catch (error: any) {
+      console.error('Error processing payment:', error)
+      setMessage({ type: 'error', text: error.message || 'Payment failed' })
     } finally {
       setProcessing(false)
     }
   }
 
-  const handleCheckIn = async () => {
-    if (!booking) return
+  // Check-in and check-out functions removed - only staff can check in/out guests
 
-    if (booking.outstanding_amount > 0) {
-      setMessage({ type: 'error', text: 'Please complete payment before checking in' })
-      setPaymentAmount(booking.outstanding_amount.toString())
-      setShowPaymentDialog(true)
-      return
+  const getStatusColor = (status: string) => {
+    const colors: { [key: string]: string } = {
+      'Pending': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      'Confirmed': 'bg-green-100 text-green-800 border-green-300',
+      'CheckedIn': 'bg-blue-100 text-blue-800 border-blue-300',
+      'CheckedOut': 'bg-gray-100 text-gray-800 border-gray-300',
+      'Cancelled': 'bg-red-100 text-red-800 border-red-300'
     }
-
-    try {
-      setProcessing(true)
-      const response = await fetch(`/api/bookings/${booking.id}/checkin`, {
-        method: 'POST'
-      })
-      const data = await response.json()
-
-      if (data.success) {
-        setMessage({ type: 'success', text: 'Checked in successfully!' })
-        fetchBooking()
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to check in' })
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to check in' })
-    } finally {
-      setProcessing(false)
-    }
+    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300'
   }
 
-  const handleCheckOut = async () => {
-    if (!booking) return
-
-    if (booking.outstanding_amount > 0) {
-      setMessage({ type: 'error', text: 'Please clear outstanding balance before checking out' })
-      setPaymentAmount(booking.outstanding_amount.toString())
-      setShowPaymentDialog(true)
-      return
+  const getPaymentTypeColor = (type: string) => {
+    const colors: { [key: string]: string } = {
+      'full': 'bg-green-100 text-green-800',
+      'reservation_fee': 'bg-amber-100 text-amber-800',
+      'partial': 'bg-blue-100 text-blue-800',
+      'service_payment': 'bg-purple-100 text-purple-800'
     }
-
-    try {
-      setProcessing(true)
-      const response = await fetch(`/api/bookings/${booking.id}/checkout`, {
-        method: 'POST'
-      })
-      const data = await response.json()
-
-      if (data.success) {
-        setMessage({ type: 'success', text: 'Checked out successfully!' })
-        fetchBooking()
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to check out' })
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to check out' })
-    } finally {
-      setProcessing(false)
-    }
+    return colors[type] || 'bg-gray-100 text-gray-800'
   }
 
   const getStatusBadge = () => {
@@ -287,6 +406,33 @@ export default function BookingDetailsPage() {
           </CardContent>
         </Card>
 
+        {/* Tabbed Interface */}
+        <Tabs defaultValue={defaultTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 bg-white shadow-sm border border-gray-200 rounded-xl p-1">
+            <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black">
+              <Home className="w-4 h-4 mr-2" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger 
+              value="services" 
+              className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black"
+              onClick={() => fetchServices()}
+            >
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Services
+            </TabsTrigger>
+            <TabsTrigger 
+              value="payments" 
+              className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black"
+              onClick={() => fetchPayments()}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Payments
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview">
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
@@ -451,26 +597,7 @@ export default function BookingDetailsPage() {
                       Pay Now
                     </Button>
                   )}
-                  {canCheckIn() && (
-                    <Button
-                      onClick={handleCheckIn}
-                      disabled={processing}
-                      className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-6 text-base rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                    >
-                      <LogIn className="w-5 h-5 mr-2" />
-                      Check In
-                    </Button>
-                  )}
-                  {canCheckOut() && (
-                    <Button
-                      onClick={handleCheckOut}
-                      disabled={processing}
-                      className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-6 text-base rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                    >
-                      <LogOut className="w-5 h-5 mr-2" />
-                      Check Out
-                    </Button>
-                  )}
+                  {/* Check-in/Check-out removed - only staff can perform these actions */}
                 </div>
               </CardContent>
             </Card>
@@ -558,113 +685,442 @@ export default function BookingDetailsPage() {
             </Card>
           </div>
         </div>
-      </div>
+          </TabsContent>
 
-      {/* Payment Dialog */}
-      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="bg-white">
-          <DialogHeader className="border-b border-amber-200 pb-4">
-            <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <CreditCard className="w-6 h-6 text-amber-600" />
-              Make Payment
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            {booking && (
-              <div className="p-5 bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-xl border border-amber-200 shadow-sm">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-gray-600 font-medium">Booking Reference</p>
-                    <p className="text-sm font-mono font-bold text-gray-900">{booking.booking_reference}</p>
+          {/* Services Tab */}
+          <TabsContent value="services">
+            <Card className="shadow-lg border-2 border-gray-200">
+              <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-t-lg">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="w-6 h-6" />
+                    Additional Services
+                  </CardTitle>
+                  {['Pending', 'Confirmed', 'CheckedIn'].includes(booking.status) && (
+                    <Button
+                      onClick={() => {
+                        fetchAvailableServices()
+                        setShowAddServiceDialog(true)
+                      }}
+                      className="bg-white text-purple-600 hover:bg-purple-50"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Service
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {services.length === 0 ? (
+                  <div className="text-center py-12">
+                    <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-4">No additional services added yet</p>
+                    {['Pending', 'Confirmed', 'CheckedIn'].includes(booking.status) && (
+                      <Button
+                        onClick={() => {
+                          fetchAvailableServices()
+                          setShowAddServiceDialog(true)
+                        }}
+                        variant="outline"
+                        className="border-2 border-purple-300 hover:bg-purple-50"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Your First Service
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-gray-600 font-medium">Total Amount</p>
-                    <p className="text-sm font-bold text-gray-900">${Number(booking.total_amount).toFixed(2)}</p>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-gray-600 font-medium">Amount Paid</p>
-                    <p className="text-sm font-bold text-green-600">${Number(booking.paid_amount).toFixed(2)}</p>
-                  </div>
-                  <div className="pt-2 border-t border-amber-300">
-                    <div className="flex justify-between items-center">
-                      <p className="text-base text-gray-900 font-bold">Outstanding Balance</p>
-                      <p className="text-xl font-bold text-red-600">${Number(booking.outstanding_amount).toFixed(2)}</p>
+                ) : (
+                  <div className="space-y-4">
+                    {services.map((service) => (
+                      <div
+                        key={service.service_usage_id}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900">{service.service_name}</h4>
+                          <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                            <span>Quantity: {service.quantity}</span>
+                            <span>Price: ${Number(service.price_at_time).toFixed(2)}</span>
+                            <span className="font-semibold text-gray-900">Total: ${Number(service.total_price).toFixed(2)}</span>
+                          </div>
+                          {service.notes && (
+                            <p className="text-sm text-gray-600 mt-2 italic">{service.notes}</p>
+                          )}
+                          <p className="text-xs text-gray-500 mt-2">Added: {new Date(service.added_at).toLocaleString()}</p>
+                        </div>
+                        {['Pending', 'Confirmed', 'CheckedIn'].includes(booking.status) && (
+                          <Button
+                            onClick={() => {
+                              setServiceToDelete(service)
+                              setShowDeleteServiceDialog(true)
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    
+                    <div className="pt-4 border-t-2 border-gray-200">
+                      <div className="flex justify-between items-center text-xl font-bold">
+                        <span>Total Services Cost:</span>
+                        <span className="text-purple-600">${Number(booking.services_amount).toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Payments Tab */}
+          <TabsContent value="payments">
+            <Card className="shadow-lg border-2 border-gray-200">
+              <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-t-lg">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-6 h-6" />
+                    Payment History
+                  </CardTitle>
+                  {booking.outstanding_amount > 0 && (
+                    <Button
+                      onClick={() => {
+                        setPaymentAmount(booking.outstanding_amount.toString())
+                        setShowPaymentDialog(true)
+                      }}
+                      className="bg-white text-blue-600 hover:bg-blue-50"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Make Payment
+                    </Button>
+                  )}
                 </div>
-              </div>
-            )}
-            
+              </CardHeader>
+              <CardContent className="p-6">
+                {payments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-4">No payments made yet</p>
+                    {booking.outstanding_amount > 0 && (
+                      <Button
+                        onClick={() => {
+                          setPaymentAmount(booking.outstanding_amount.toString())
+                          setShowPaymentDialog(true)
+                        }}
+                        variant="outline"
+                        className="border-2 border-blue-300 hover:bg-blue-50"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Make Your First Payment
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {payments.map((payment) => (
+                      <div
+                        key={payment.payment_id}
+                        className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="w-5 h-5 text-blue-600" />
+                            <span className="font-semibold text-xl text-gray-900">${Number(payment.amount).toFixed(2)}</span>
+                          </div>
+                          <Badge className={`${getPaymentTypeColor(payment.payment_type)} px-3 py-1`}>
+                            {payment.payment_type.replace('_', ' ').toUpperCase()}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-gray-600">Method:</span>
+                            <span className="ml-2 font-semibold text-gray-900">{payment.payment_method}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Status:</span>
+                            <Badge variant={payment.payment_status === 'Completed' ? 'default' : 'secondary'} className="ml-2">
+                              {payment.payment_status}
+                            </Badge>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-gray-600">Date:</span>
+                            <span className="ml-2 text-gray-900">{new Date(payment.payment_date).toLocaleString()}</span>
+                          </div>
+                          {payment.transaction_id && (
+                            <div className="col-span-2">
+                              <span className="text-gray-600">Transaction ID:</span>
+                              <span className="ml-2 font-mono text-xs text-gray-900">{payment.transaction_id}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <div className="pt-4 border-t-2 border-gray-200 space-y-2">
+                      <div className="flex justify-between items-center text-lg">
+                        <span className="font-semibold">Total Paid:</span>
+                        <span className="text-green-600 font-bold">${Number(booking.paid_amount).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-lg">
+                        <span className="font-semibold">Outstanding:</span>
+                        <span className={`font-bold ${booking.outstanding_amount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ${Number(booking.outstanding_amount).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Add Service Dialog */}
+      <Dialog open={showAddServiceDialog} onOpenChange={setShowAddServiceDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-purple-600" />
+              Add Service to Booking
+            </DialogTitle>
+            <DialogDescription>
+              Select a service to add to your booking. The cost will be added to your outstanding balance.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                <CreditCard className="w-4 h-4 text-amber-600" />
-                Payment Amount
-              </label>
-              <input
+              <Label htmlFor="service">Service</Label>
+              <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                <SelectTrigger id="service">
+                  <SelectValue placeholder="Select a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableServices.filter(s => s.available).map((service) => (
+                    <SelectItem key={service.service_id} value={service.service_id.toString()}>
+                      {service.name} - ${Number(service.price).toFixed(2)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedServiceId && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {availableServices.find(s => s.service_id.toString() === selectedServiceId)?.description}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
                 type="number"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all text-base font-semibold"
-                placeholder="Enter amount"
-                step="0.01"
-                min="0"
+                min="1"
+                value={serviceQuantity}
+                onChange={(e) => setServiceQuantity(e.target.value)}
+                placeholder="Enter quantity"
               />
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                <CreditCard className="w-4 h-4 text-amber-600" />
-                Payment Method
-              </label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-amber-500 focus:ring-2 focus:ring-amber-200 transition-all text-base font-semibold bg-white"
-              >
-                <option value="CreditCard">Credit Card</option>
-                <option value="DebitCard">Debit Card</option>
-                <option value="Cash">Cash</option>
-                <option value="BankTransfer">Bank Transfer</option>
-              </select>
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                value={serviceNotes}
+                onChange={(e) => setServiceNotes(e.target.value)}
+                placeholder="Any special instructions..."
+                rows={3}
+              />
             </div>
 
-            <div className="p-4 bg-blue-50/80 backdrop-blur-sm rounded-xl border border-blue-200 shadow-sm">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-blue-800 font-medium">
-                  This is a demo payment system. No actual charges will be made to your account.
-                </p>
+            {selectedServiceId && (
+              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-900">Estimated Cost:</span>
+                  <span className="text-xl font-bold text-amber-600">
+                    ${(Number(availableServices.find(s => s.service_id.toString() === selectedServiceId)?.price || 0) * parseInt(serviceQuantity || '1')).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddServiceDialog(false)
+                setSelectedServiceId('')
+                setServiceQuantity('1')
+                setServiceNotes('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddService}
+              disabled={processing || !selectedServiceId}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {processing ? 'Adding...' : 'Add Service'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Service Dialog */}
+      <Dialog open={showDeleteServiceDialog} onOpenChange={setShowDeleteServiceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Remove Service
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this service from your booking? The cost will be deducted from your total.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {serviceToDelete && (
+            <div className="p-4 bg-gray-50 rounded-lg border">
+              <h4 className="font-semibold text-gray-900 mb-2">{serviceToDelete.service_name}</h4>
+              <div className="text-sm text-gray-600 space-y-1">
+                <div>Quantity: {serviceToDelete.quantity}</div>
+                <div className="font-semibold text-gray-900">Total: ${Number(serviceToDelete.total_price).toFixed(2)}</div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteServiceDialog(false)
+                setServiceToDelete(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteService}
+              disabled={processing}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {processing ? 'Removing...' : 'Remove Service'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-blue-600" />
+              Make Payment
+            </DialogTitle>
+            <DialogDescription>
+              Pay for your outstanding balance. You can make a partial or full payment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-600">Outstanding Balance:</span>
+                <span className="text-2xl font-bold text-blue-600">${Number(booking.outstanding_amount).toFixed(2)}</span>
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <Button
-                onClick={handlePayment}
-                disabled={processing}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-bold py-6 text-base rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="w-5 h-5 mr-2" />
-                    Process Payment
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={() => setShowPaymentDialog(false)}
-                variant="outline"
-                className="flex-1 border-2 border-gray-300 hover:border-red-500 hover:bg-red-50 font-bold py-6 text-base rounded-xl shadow-md hover:shadow-lg transition-all"
-              >
-                <XCircle className="w-5 h-5 mr-2" />
-                Cancel
-              </Button>
+            <div>
+              <Label htmlFor="payment-amount">Payment Amount ($)</Label>
+              <Input
+                id="payment-amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={booking.outstanding_amount}
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="Enter amount to pay"
+              />
+              <div className="flex gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaymentAmount((booking.outstanding_amount * 0.5).toFixed(2))}
+                >
+                  50%
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaymentAmount(booking.outstanding_amount.toString())}
+                >
+                  Pay Full
+                </Button>
+              </div>
             </div>
+
+            <div>
+              <Label htmlFor="payment-method">Payment Method</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger id="payment-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Credit Card">Credit Card</SelectItem>
+                  <SelectItem value="Debit Card">Debit Card</SelectItem>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="PayPal">PayPal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {paymentAmount && parseFloat(paymentAmount) > 0 && (
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Payment Amount:</span>
+                    <span className="font-bold text-gray-900">${Number(paymentAmount).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Remaining Balance:</span>
+                    <span className="font-bold text-gray-900">
+                      ${(booking.outstanding_amount - parseFloat(paymentAmount)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPaymentDialog(false)
+                setPaymentAmount('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePayment}
+              disabled={processing || !paymentAmount || parseFloat(paymentAmount) <= 0}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {processing ? 'Processing...' : 'Process Payment'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
